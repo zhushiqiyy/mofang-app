@@ -101,7 +101,7 @@ ok('Podfile 含 BLE 插件', fs.existsSync(path.join(iosDir, 'Podfile')) &&
    fs.readFileSync(path.join(iosDir, 'Podfile'), 'utf8').includes('CapacitorCommunityBluetoothLe'));
 const plist = fs.readFileSync(path.join(iosDir, 'App', 'Info.plist'), 'utf8');
 ok('Info.plist 含蓝牙权限说明', plist.includes('NSBluetoothAlwaysUsageDescription'));
-ok('Info.plist 锁竖屏', plist.includes('UIInterfaceOrientationPortrait') && !plist.includes('Landscape'));
+ok('Info.plist 支持横竖屏', plist.includes('UIInterfaceOrientationPortrait') && plist.includes('UIInterfaceOrientationLandscapeLeft') && plist.includes('UIInterfaceOrientationLandscapeRight'));
 ok('共享 scheme 存在', fs.existsSync(path.join(iosDir, 'App.xcodeproj', 'xcshareddata', 'xcschemes', 'App.xcscheme')));
 ok('www 含 capacitor.js 运行时', fs.existsSync(path.join(iosDir, 'App', 'public', 'capacitor.js')));
 ok('www 含 bluetooth-le.js 插件', fs.existsSync(path.join(iosDir, 'App', 'public', 'bluetooth-le.js')));

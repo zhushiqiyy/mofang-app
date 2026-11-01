@@ -73,7 +73,7 @@ function starTotal(){
 }
 
 /* ---------------- 路由 ---------------- */
-const TAB_PAGES = ['home','map','quest','lib','practice','skin','ach'];
+const TAB_PAGES = ['home','map','quest','lib','practice','gan','skin','ach'];
 const PAGE_TITLE = {
   home:'魔方小将', map:'学习地图', sense:'色块感知训练', notes:'记号训练营',
   lib:'119 招公式库', quest:'闯关之路', relate:'关联练习',

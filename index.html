@@ -29,7 +29,7 @@
   body{
     font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,sans-serif;
     background:var(--bg); color:var(--ink);
-    font-size:16px; line-height:1.6;
+    font-size:17px; line-height:1.7;
     -webkit-font-smoothing:antialiased;
     overscroll-behavior-y:none;
   }
@@ -65,8 +65,8 @@
   h1{font-size:23px; margin:8px 0 4px; letter-spacing:.2px;}
   h2{font-size:19px; margin:20px 0 10px; display:flex; align-items:center; gap:8px;}
   h3{font-size:17px; margin:0 0 8px;}
-  .lead{color:var(--sub); font-size:15px; line-height:1.75; margin:6px 0 12px;}
-  .sub{color:var(--sub); font-size:13.5px;}
+  .lead{color:var(--sub); font-size:16px; line-height:1.75; margin:6px 0 12px;}
+  .sub{color:var(--sub); font-size:14.5px;}
   .center{text-align:center;}
   .hidden{display:none !important;}
 
@@ -112,7 +112,7 @@
   .tabbar button{
     flex:1; border:none; background:none; cursor:pointer; color:var(--sub);
     display:flex; flex-direction:column; align-items:center; gap:2px;
-    font-size:11px; font-weight:700; padding:6px 0; border-radius:12px;
+    font-size:12px; font-weight:700; padding:6px 0; border-radius:12px;
   }
   .tabbar button .ic{font-size:21px; line-height:1.1;}
   .tabbar button.on{color:var(--blue); background:var(--blue-l);}
@@ -459,7 +459,7 @@
 <!-- ============ 首页 ============ -->
 <section class="page active" id="page-home">
   <h1>🟦🟨🟥 魔方小将 · CFOP 训练营</h1>
-  <p class="lead">把"一层一层做"升级成 <b>CFOP 思维</b>：角块和棱块<b>配成一对</b>一起塞进槽（F2L），顶层再用 <b>OLL 翻黄</b>、<b>PLL 摆位</b> 两步收尾。一共 <b>119 招</b>，每天闯几关，配 GAN356i 实测，进步看得见。</p>
+  <p class="lead">跟我从<b>零基础到速拧高手</b>：先练手感色感，再学 F2L 配对、OLL 翻黄、PLL 摆位，共 <b>119 招</b>。连上 GAN 魔方还能自动计时。</p>
 
   <div class="card center">
     <div class="huge" id="home-stars">0 ⭐</div>
@@ -819,6 +819,7 @@
   <button data-page="quest"><span class="ic">⚔️</span>闯关</button>
   <button data-page="lib"><span class="ic">📚</span>公式</button>
   <button data-page="practice"><span class="ic">🎯</span>实战</button>
+  <button data-page="gan"><span class="ic">🔵</span>魔方</button>
   <button data-page="skin"><span class="ic">🎨</span>皮肤</button>
   <button data-page="ach"><span class="ic">🏆</span>成就</button>
 </nav>
@@ -2088,7 +2089,7 @@ function starTotal(){
 }
 
 /* ---------------- 路由 ---------------- */
-const TAB_PAGES = ['home','map','quest','lib','practice','skin','ach'];
+const TAB_PAGES = ['home','map','quest','lib','practice','gan','skin','ach'];
 const PAGE_TITLE = {
   home:'魔方小将', map:'学习地图', sense:'色块感知训练', notes:'记号训练营',
   lib:'119 招公式库', quest:'闯关之路', relate:'关联练习',
