@@ -110,6 +110,7 @@ function renderPage(p){
   if (p === 'ach')      renderAch();
   if (p === 'skin')     renderSkinRoom();
   if (p === 'sense')    renderSenseEntry();
+  if (p === 'gan')      ganShowEnv();
 }
 
 $('tabbar').addEventListener('click', e => {

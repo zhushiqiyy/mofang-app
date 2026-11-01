@@ -290,6 +290,15 @@ function ganSetStatus(html) {
   if (e) e.innerHTML = html;
 }
 
+/* 环境诊断：显示当前蓝牙通道是否可用（排查「连不上」用） */
+function ganShowEnv(){
+  const e = $('gan-env');
+  if (!e) return;
+  const hasPlugin = !!(window.capacitorCommunityBluetoothLe && window.capacitorCommunityBluetoothLe.BluetoothLe);
+  const isNat = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  e.textContent = '环境：蓝牙通道=' + BLE.kind() + ' · 插件=' + (hasPlugin ? '已加载' : '未加载') + ' · 原生=' + (isNat ? '是' : '否');
+}
+
 function ganSupported() { return BLE.isSupported(); }
 
 /* ---------------- 连接流程 ---------------- */

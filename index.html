@@ -743,6 +743,7 @@
 <section class="page" id="page-gan">
   <h1>🔵 GAN356i 智能魔方</h1>
   <p class="lead">连上真魔方，你拧一步、屏幕跟着动一步，还自动计时。</p>
+  <div class="sub" id="gan-env" style="opacity:.75;margin:-6px 0 8px;"></div>
   <div class="card">
     <div class="row">
       <button class="btn green" onclick="pracConnectGAN()">📡 连接魔方</button>
@@ -2127,6 +2128,7 @@ function renderPage(p){
   if (p === 'ach')      renderAch();
   if (p === 'skin')     renderSkinRoom();
   if (p === 'sense')    renderSenseEntry();
+  if (p === 'gan')      ganShowEnv();
 }
 
 $('tabbar').addEventListener('click', e => {
@@ -4479,6 +4481,15 @@ let ganBackgroundRelease = false;   /* 后台主动断开标记（避免误报"�
 function ganSetStatus(html) {
   const e = $('gan-status');
   if (e) e.innerHTML = html;
+}
+
+/* 环境诊断：显示当前蓝牙通道是否可用（排查「连不上」用） */
+function ganShowEnv(){
+  const e = $('gan-env');
+  if (!e) return;
+  const hasPlugin = !!(window.capacitorCommunityBluetoothLe && window.capacitorCommunityBluetoothLe.BluetoothLe);
+  const isNat = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  e.textContent = '环境：蓝牙通道=' + BLE.kind() + ' · 插件=' + (hasPlugin ? '已加载' : '未加载') + ' · 原生=' + (isNat ? '是' : '否');
 }
 
 function ganSupported() { return BLE.isSupported(); }

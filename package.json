@@ -6,7 +6,8 @@
   "scripts": {
     "build": "node build.js",
     "build:ios": "node build.js && npx cap sync ios",
-    "verify": "node tools/verify_final.js"
+    "verify": "node tools/verify_final.js",
+    "postinstall": "node scripts/patch-ble.js"
   },
   "keywords": [],
   "author": "",
