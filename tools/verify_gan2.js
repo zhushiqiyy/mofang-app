@@ -102,14 +102,14 @@ function makeMockNative(w, opts) {
     async initialize() {},
     async isEnabled() { return { value: true }; },
     async addListener(key, cb) { (listeners[key] = listeners[key] || []).push(cb); return { async remove() {} }; },
-    async startLEScan() {
+    async requestLEScan(scanOpts, callback) {
       setTimeout(() => {
         const md = opts.noManufacturerData ? {} : { '1': ganManufacturerHex(CUBE_MAC) };
-        (listeners['onScanResult'] || []).forEach(cb => cb({
+        callback({
           device: { deviceId: state.deviceId, name: state.name },
           localName: state.name,
           manufacturerData: md
-        }));
+        });
       }, 40);
     },
     async stopLEScan() {},
@@ -286,7 +286,7 @@ function makeMockNative(w, opts) {
     await sleep(200);
     check('兜底流程：弹出 MAC 输入框', !!w.document.getElementById('gan-mac-input'));
     w.eval("document.getElementById('gan-mac-input').value = '" + CUBE_MAC + "'; ganMacConfirm();");
-    await sleep(700);
+    await sleep(1800);
     check('兜底流程：输入 MAC 后完成连接', w.eval("document.querySelector('#gan-status').textContent.indexOf('已连接') >= 0"),
       w.eval("document.querySelector('#gan-status').textContent").slice(0, 60));
     check('兜底流程：转动解析正确', JSON.stringify(w.eval('window.__moves')) === JSON.stringify(["R'", 'F', 'U']),

@@ -349,7 +349,14 @@ async function pracConnectGAN() {
   try {
     ganConn = await BLE.connect(handle, onGanPacket, onGanDisconnect);
   } catch (err) {
-    ganSetStatus('❌ 连接失败：' + ((err && err.message) || err) + '<br>常见原因：① 魔方被 CubeStation 占用（先关掉那个 App）② 魔方睡着了，拧一下白面');
+    const m = (err && err.message) || String(err);
+    const hint = m === 'NO_GAN_SERVICE'
+      ? '连上了，但找不到魔方的数据服务（可能不是 GAN 魔方，或魔方需要重新唤醒）'
+      : m === 'NO_CHARACTERISTICS'
+        ? '连上了，但数据通道为空（魔方可能睡着了，拧一下白面再连一次）'
+        : m;
+    ganSetStatus('❌ 连接失败：' + hint +
+      '<br>常见原因：① 魔方被 <b>CubeStation</b> 占用——要「彻底退出」那个 App（从后台也划掉），必要时关一下再开蓝牙；② 魔方睡着了，拧一下白面唤醒。');
     return;
   }
 
@@ -471,19 +478,40 @@ function ganSimMove() {
 }
 
 /* ---------------- 校准方向 ---------------- */
+const FACE_COLOR = { U:'#FFFFFF', D:'#FFD500', F:'#009E54', B:'#0051BA', R:'#E8121D', L:'#FF6A00' };
+
 function ganCalibrate() {
   const faces = ['U', 'R', 'F', 'D', 'L', 'B'];
+  const iso = `
+    <svg viewBox="0 0 200 170" width="210" height="178" style="margin:0 auto;display:block;">
+      <polygon points="100,20 165,55 100,90 35,55" fill="#FFFFFF" stroke="#cfcfcf" stroke-width="1.5"/>
+      <polygon points="35,55 100,90 100,153 35,118" fill="#009E54" stroke="#cfcfcf" stroke-width="1.5"/>
+      <polygon points="100,90 165,55 165,118 100,153" fill="#E8121D" stroke="#cfcfcf" stroke-width="1.5"/>
+      <text x="100" y="62" text-anchor="middle" font-size="15" font-weight="800" fill="#333">U 上(白)</text>
+      <text x="66" y="120" text-anchor="middle" font-size="13" font-weight="800" fill="#fff">F 前(绿)</text>
+      <text x="133" y="120" text-anchor="middle" font-size="13" font-weight="800" fill="#fff">R 右(红)</text>
+    </svg>
+    <div class="sub center" style="margin-top:6px;">背面三面：<b>D 下</b>(黄) · <b>L 左</b>(橙) · <b>B 后</b>(蓝)</div>`;
+
   let rows = '';
   for (let i = 0; i < 6; i++) {
     const cur = ganFaceMap[i] || GAN_FACE[i];
     const opts = faces.map(f =>
       '<option value="' + f + '"' + (f === cur ? ' selected' : '') + '>' + FACE_NAME[f] + ' ' + f + '</option>'
     ).join('');
-    rows += '<div class="cal-row"><span>GAN 第 ' + (i + 1) + ' 面 →</span><select id="ganmap-' + i + '">' + opts + '</select></div>';
+    rows += '<div class="row" style="align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eef;">'
+      + '<span class="sub">GAN 第 ' + (i + 1) + ' 面</span>'
+      + '<span style="display:inline-flex;align-items:center;gap:8px;">'
+      + '<i class="facesw" id="gan-swatch-' + i + '" style="background:' + FACE_COLOR[cur]
+      + (cur === 'U' ? ';border:1px solid #ccc' : '') + '"></i>'
+      + '<select id="ganmap-' + i + '" onchange="ganSwatch(' + i + ')">' + opts + '</select>'
+      + '</span></div>';
   }
+
   $('sheet').innerHTML =
     '<div class="sheet-head"><h3>🧭 校准方向</h3><button class="closex" onclick="closeModal()">✕</button></div>'
-    + '<div class="sub">连上魔方后，如果每拧一个面，屏幕上转的方向和手里的<b>不一样</b>，就把「GAN 第 N 面」对应到你魔方上真正的那一面。</div>'
+    + '<div class="sub">对照下面的<b>轴测图</b>：上=白、前=绿、右=红。连上魔方后如果拧一个面，屏幕转的方向和手里<b>对不上</b>，就把「GAN 第 N 面」改成你魔方上<b>真正对应颜色</b>的那一面。</div>'
+    + '<div class="card" style="margin-top:10px;">' + iso + '</div>'
     + '<div class="card" style="margin-top:10px;">' + rows + '</div>'
     + '<div class="sub" style="margin-top:8px;">改完点下面「应用并归零」，屏幕魔方会跟真魔方重新对齐。</div>'
     + '<div class="row center" style="margin-top:14px;gap:10px;">'
@@ -491,6 +519,16 @@ function ganCalibrate() {
     + '<button class="btn alt" onclick="closeModal()">取消</button>'
     + '</div>';
   $('modal').classList.add('show');
+}
+
+function ganSwatch(i) {
+  const sel = $('ganmap-' + i);
+  const sw = $('gan-swatch-' + i);
+  if (sel && sw) {
+    const f = sel.value;
+    sw.style.background = FACE_COLOR[f] || '#fff';
+    sw.style.border = (f === 'U') ? '1px solid #ccc' : '1px solid #e0e0e0';
+  }
 }
 
 function ganApplyCalib() {

@@ -84,7 +84,7 @@ ok('无 debugger 语句', !has('debugger'));
 console.log('');
 console.log('== 9. 蓝牙魔方（双平台桥接 + GAN 协议）==');
 ok('BLE 桥接层存在', has('const BLE = (function'));
-ok('桥接层含原生路径（Capacitor）', has('capacitorCommunityBluetoothLe') && has('startLEScan'));
+ok('桥接层含原生路径（Capacitor）', has('capacitorCommunityBluetoothLe') && has('requestLEScan'));
 ok('桥接层含网页路径（Web Bluetooth）', has('navigator.bluetooth.requestDevice'));
 ok('业务代码不直接调用 Web Bluetooth（只经桥接层）', (html.match(/navigator\.bluetooth\.requestDevice/g) || []).length === 1);
 ok('AES-128 实现存在', has('AES_SBOX') && has('aesExpandKey') && has('aesEncryptBlock') && has('aesDecryptBlock'));

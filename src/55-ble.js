@@ -144,39 +144,39 @@ const BLE = (function () {
     /* 蓝牙开关检查（iOS 只能提示，不能代开） */
     try {
       const en = await P.isEnabled();
-      if (en && en.value === false) { const e = new Error('BLUETOOTH_OFF'); e.code = 'BLUETOOTH_OFF'; throw e; }
-    } catch (e) { if (e && e.code === 'BLUETOOTH_OFF') throw e; }
+      if (en && en.value === false) { const e = new Error('BLUETOOTH_OFF'); throw e; }
+    } catch (e) { if (e && e.message === 'BLUETOOTH_OFF') throw e; }
 
     return new Promise((resolve, reject) => {
       let settled = false;
-      let scanHandle = null, rescanTimer = null, timeoutTimer = null;
+      let rescanTimer = null, timeoutTimer = null;
 
       const cleanup = async () => {
         if (rescanTimer) clearTimeout(rescanTimer);
         if (timeoutTimer) clearTimeout(timeoutTimer);
-        if (scanHandle) { try { await scanHandle.remove(); } catch (e) {} scanHandle = null; }
         try { await P.stopLEScan(); } catch (e) {}
       };
 
-      P.addListener('onScanResult', (r) => {
+      const onResult = (r) => {
         if (settled) return;
         const name = (r.device && r.device.name) || r.localName || '';
         if (!nameLooksLikeCube(name)) return;
         const mac = macFromManufacturerData(r.manufacturerData);
         settled = true;
-        const handle = { id: r.device.deviceId, name: name, mac: mac };
-        cleanup().then(() => resolve(handle));
-      }).then(h => { scanHandle = h; }).catch(() => {});
+        cleanup().then(() => resolve({ id: r.device.deviceId, name: name, mac: mac }));
+      };
 
       /* 第一轮：全量扫描（iOS 前台能看到所有广播包，再按名字过滤，最稳） */
-      P.startLEScan({ services: [], allowDuplicates: true }).catch(() => {});
+      P.requestLEScan({ services: [], allowDuplicates: true }, onResult).catch(() => {});
 
       /* 6 秒还没找到：换成按 GAN 服务 UUID 过滤再扫一轮（兼容空列表不被接受的情况） */
       rescanTimer = setTimeout(() => {
         if (settled) return;
-        P.stopLEScan().catch(() => {});
-        if (onStatus) onStatus('rescan');
-        P.startLEScan({ services: GAN_SERVICE_UUIDS, allowDuplicates: true }).catch(() => {});
+        P.stopLEScan().catch(() => {}).then(() => {
+          if (settled) return;
+          if (onStatus) onStatus('rescan');
+          P.requestLEScan({ services: GAN_SERVICE_UUIDS, allowDuplicates: true }, onResult).catch(() => {});
+        });
       }, 6000);
 
       /* 25 秒总超时 */
@@ -195,12 +195,12 @@ const BLE = (function () {
 
     await P.connect(handle.id, () => { if (onDisconnect) onDisconnect(); });
 
+    /* CoreBluetooth 连接后稍等，再强制发现服务 + 特性（getServices 可能只返回服务 UUID 而没有 characteristics） */
+    await new Promise(r => setTimeout(r, 500));
+    try { await P.discoverServices(handle.id); } catch (e) {}
+    await new Promise(r => setTimeout(r, 400));
     let services = [];
     try { services = await P.getServices(handle.id) || []; } catch (e) {}
-    if (!services.length) {
-      try { await P.discoverServices(handle.id); } catch (e) {}
-      try { services = await P.getServices(handle.id) || []; } catch (e) {}
-    }
 
     /* 先按已知 GAN 服务找；找不到就退而求其次：任一同时具备通知+写入特征的服务 */
     let svc = services.find(s => GAN_SERVICE_UUIDS.indexOf((s.uuid || '').toLowerCase()) >= 0);
