@@ -1,0 +1,23 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>dbg</title>
+<style>body{margin:0;font:13px monospace;}</style></head>
+<body>
+<iframe src="index.html" id="f" style="width:430px;height:900px;border:0"></iframe>
+<pre id="out">loading</pre>
+<script>
+document.getElementById('f').onload = function(){
+  var d = this.contentDocument;
+  var w = d.documentElement.clientWidth;
+  var lines = ['clientWidth=' + w, 'body.scrollWidth=' + d.body.scrollWidth, 'body.offsetWidth=' + d.body.offsetWidth];
+  var all = d.querySelectorAll('*');
+  var bad = [];
+  for (var i=0;i<all.length;i++){
+    var el = all[i], r = el.getBoundingClientRect();
+    if (r.width > w + 1){
+      bad.push((el.tagName + '.' + (el.className||'')).slice(0,50) + ' w=' + Math.round(r.width) + ' left=' + Math.round(r.left));
+    }
+  }
+  lines.push('--- wider than viewport (' + bad.length + ') ---');
+  document.getElementById('out').textContent = lines.concat(bad.slice(0,40)).join('\n');
+};
+</script>
+</body></html>

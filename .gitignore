@@ -1,0 +1,21 @@
+# 依赖（云端构建时会重新安装）
+node_modules/
+
+# 构建产物（本地不需要）
+ios/build/
+ios/App/build/
+ios/App/Payload/
+ios/App/App.ipa
+*.xcarchive
+*.ipa
+
+# 验证工具截图
+shots/
+tools/*.png
+
+# 系统垃圾
+Thumbs.db
+desktop.ini
+.DS_Store
+# Edge 测试残留
+.edgeprof/

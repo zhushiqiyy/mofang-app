@@ -1,0 +1,16 @@
+{
+  "appId": "com.mofang.cfop",
+  "appName": "魔方小将",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "always"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 600,
+      "backgroundColor": "#eef3fb",
+      "showSpinner": false,
+      "iosSplashScreenStyle": "light"
+    }
+  }
+}

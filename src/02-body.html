@@ -1,0 +1,383 @@
+</head>
+<body>
+
+<header class="topbar">
+  <button class="back" id="top-back" aria-label="返回">‹</button>
+  <div class="ttl" id="top-title">魔方小将</div>
+  <div class="stars" id="top-stars">0 ⭐</div>
+</header>
+
+<main>
+
+<!-- ============ 首页 ============ -->
+<section class="page active" id="page-home">
+  <h1>🟦🟨🟥 魔方小将 · CFOP 训练营</h1>
+  <p class="lead">把"一层一层做"升级成 <b>CFOP 思维</b>：角块和棱块<b>配成一对</b>一起塞进槽（F2L），顶层再用 <b>OLL 翻黄</b>、<b>PLL 摆位</b> 两步收尾。一共 <b>119 招</b>，每天闯几关，配 GAN356i 实测，进步看得见。</p>
+
+  <div class="card center">
+    <div class="huge" id="home-stars">0 ⭐</div>
+    <div class="sub">已点亮 · 连续打卡 <b id="home-streak">0</b> 天 · 五星通关 <b id="home-5star">0</b> 关</div>
+    <div class="row center" style="margin-top:12px;">
+      <button class="btn" onclick="go('quest')">⚔️ 去闯关</button>
+      <button class="btn green" onclick="go('practice')">🎯 实战 / 对战</button>
+    </div>
+  </div>
+
+  <div class="card" id="home-companion" style="margin-top:14px;"></div>
+
+  <h2>📊 我的进度</h2>
+  <div class="card" id="home-bars"></div>
+
+  <h2>🚪 训练入口</h2>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));">
+    <div class="card tight" style="margin:0;cursor:pointer" onclick="go('sense')">
+      <div style="font-size:26px">👀</div>
+      <b>色块感知训练</b>
+      <div class="sub" style="font-size:12.5px">第一阶段 · 建立空间本能</div>
+    </div>
+    <div class="card tight" style="margin:0;cursor:pointer" onclick="go('notes')">
+      <div style="font-size:26px">🔤</div>
+      <b>记号训练营</b>
+      <div class="sub" style="font-size:12.5px">R U F' 到底怎么转</div>
+    </div>
+    <div class="card tight" style="margin:0;cursor:pointer" onclick="go('lib')">
+      <div style="font-size:26px">📚</div>
+      <b>119 招公式库</b>
+      <div class="sub" style="font-size:12.5px">3D 演示 + 分步跟练</div>
+    </div>
+    <div class="card tight" style="margin:0;cursor:pointer" onclick="go('relate')">
+      <div style="font-size:26px">🔗</div>
+      <b>关联练习</b>
+      <div class="sub" style="font-size:12.5px">易混对子 · 看形选招</div>
+    </div>
+  </div>
+
+  <div class="card warn" style="margin-top:14px;">
+    <b>给小朋友：</b>不用一次背完 119 招！先把「两步 OLL（9 招）」和「两步 PLL（6 招）」学会，你的成绩就会从 40 多秒掉到 30 秒内 —— 这就是 CFOP 的威力。
+  </div>
+</section>
+
+<!-- ============ 学习地图 ============ -->
+<section class="page" id="page-map">
+  <h1>🗺️ 学习地图</h1>
+  <p class="lead">按顺序走，一关一关来。每一关都会告诉你「练什么、练多久、怎么算过关」。</p>
+  <div class="card" id="map-think"></div>
+  <h2>🧭 五个阶段</h2>
+  <div id="map-phases"></div>
+  <div class="card" style="background:#f3eeff;border:1px solid #ddd0ff;">
+    <b>💡 家长提示：</b>第一阶段别急着进公式库。空间感知和记号本能练扎实了，后面学 F2L 会快一倍。
+  </div>
+</section>
+
+<!-- ============ 色块感知训练 ============ -->
+<section class="page" id="page-sense">
+  <h1>👀 色块位置感知</h1>
+  <p class="lead">不背公式，先练「眼睛」。看着 3D 魔方，一眼说出<b>哪面是哪面</b>、<b>哪块是什么颜色</b>——这是 F2L 提速的真正地基。</p>
+
+  <div class="card center" id="sense-intro">
+    <div style="font-size:44px">🎯</div>
+    <h3>三关小游戏</h3>
+    <p class="sub" style="margin:4px 0 14px;">每关 10 题，答得又快又准就能拿 3 星</p>
+    <div class="row center" style="flex-direction:column;align-items:stretch;gap:10px;">
+      <button class="btn" onclick="senseStart('face')">① 认面关 · 这是什么面？</button>
+      <button class="btn alt" onclick="senseStart('piece')">② 找块关 · 那块在哪里？</button>
+      <button class="btn alt" onclick="senseStart('center')">③ 中心关 · 中心是什么色？</button>
+    </div>
+  </div>
+
+  <div id="sense-play" class="hidden">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <span class="pill" id="sense-prog">第 1 / 10 题</span>
+        <span class="pill y" id="sense-time">0.0 秒</span>
+        <span class="pill g" id="sense-score">✅ 0</span>
+      </div>
+      <div class="viewwrap" style="margin-top:10px;">
+        <div id="sense-3d"></div>
+        <div class="viewhint">可以拖动转视角</div>
+      </div>
+      <div class="viewctrl" id="sense-viewctrl"></div>
+      <div class="sense-q" id="sense-q">准备…</div>
+      <div id="sense-opts" class="opts"></div>
+      <div id="sense-fb" class="sub center" style="margin-top:10px;min-height:22px;"></div>
+    </div>
+  </div>
+
+  <div id="sense-result" class="hidden"></div>
+</section>
+
+<!-- ============ 记号训练营 ============ -->
+<section class="page" id="page-notes">
+  <h1>🔤 记号训练营</h1>
+  <p class="lead">所有公式都由这几个字母组成。先看下面的魔方怎么转，把记号变成<b>手指的本能</b>。</p>
+
+  <div class="card">
+    <div class="duo">
+      <div class="panel">
+        <div class="ptitle"><b>3D</b> 轴测视图（可以拖着转）</div>
+        <div class="viewwrap"><div id="note-3d"></div></div>
+        <div class="viewctrl" id="note-viewctrl"></div>
+      </div>
+      <div class="panel">
+        <div class="ptitle"><b>平面</b> 六个面（各自分开看）</div>
+        <div class="planar" id="note-planar"></div>
+      </div>
+    </div>
+
+    <div class="viewctrl" style="margin-top:10px;">
+      <button onclick="noteReset()">↺ 复原</button>
+      <button onclick="noteToggleCenter()">🎨 中心色号</button>
+    </div>
+
+    <div class="divider"></div>
+    <div id="note-btns"></div>
+    <div class="note sub center" style="margin-top:8px;" id="note-tip">点上面的按钮，看魔方怎么转 ~</div>
+  </div>
+
+  <div class="card">
+    <h3>🎲 考考你</h3>
+    <div id="note-quiz-q" class="sense-q" style="font-size:17px;">点下面按钮开始</div>
+    <div class="viewwrap" style="margin:10px 0;"><div id="note-quiz-3d"></div></div>
+    <div id="note-quiz-opts" class="opts"></div>
+    <div class="row center" style="margin-top:12px;">
+      <button class="btn alt sm" onclick="noteQuizNew()">出一道题</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 公式库 ============ -->
+<section class="page" id="page-lib">
+  <h1>📚 119 招公式库</h1>
+  <p class="lead">点开任意一招，能看到 <b>3D 动画</b>、<b>平面示意图</b>、<b>认图线索</b>、<b>口诀</b>，还能<b>分步跟练</b>。</p>
+  <div class="chips" id="lib-tabs"></div>
+  <div class="chips" id="lib-filter" style="margin-top:0;"></div>
+  <div class="card tight">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px;">
+      <span class="pill" id="lib-count">0 招</span>
+      <span class="pill g" id="lib-done">已学 0</span>
+    </div>
+    <div class="grid" id="lib-grid"></div>
+  </div>
+</section>
+
+<!-- ============ 闯关 ============ -->
+<section class="page" id="page-quest">
+  <h1>⚔️ 闯关之路</h1>
+  <p class="lead">森林 → 山顶 → 城堡，一关比一关难。每关打完会按<b>用时</b>评星，1 星能过，3 星是高手。</p>
+  <div class="card tight" id="quest-sum">
+    <div class="row" style="justify-content:space-between;">
+      <span>总进度</span><span class="pill" id="quest-prog">0 / 0 关</span>
+    </div>
+    <div class="bar" style="margin-top:8px;"><i id="quest-bar"></i></div>
+    <div class="row" style="justify-content:space-between;margin-top:10px;">
+      <span class="sub">⭐ 总星数</span><span class="pill y" id="quest-stars">0</span>
+    </div>
+  </div>
+  <div id="quest-stages"></div>
+</section>
+
+<!-- ============ 关联练习 ============ -->
+<section class="page" id="page-relate">
+  <h1>🔗 关联练习</h1>
+  <p class="lead">长得像的招最容易搞混。这里把「易混对子」并排放，让你一眼分辨。</p>
+
+  <div class="card">
+    <h3>👀 看形选招</h3>
+    <div class="chips" id="relate-stage-chips"></div>
+    <div class="panel" style="margin-top:8px;">
+      <div class="ptitle"><b>看</b> 这个情形，是哪一招？</div>
+      <div class="viewwrap"><div id="relate-3d"></div></div>
+    </div>
+    <div id="relate-opts" class="opts"></div>
+    <div class="row center" style="margin-top:10px;">
+      <button class="btn alt sm" onclick="relateNew()">换一题</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🆚 易混对子（并排对比）</h3>
+    <div class="sub" style="margin-bottom:10px;">左右两份"长得像"的情形，只有一处不同。找出那一处，就再也不会选错。</div>
+    <div id="relate-pair"></div>
+    <div class="row center" style="margin-top:10px;">
+      <button class="btn alt sm" onclick="relatePair()">换一组</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 实战 + 对战 ============ -->
+<section class="page" id="page-practice">
+  <h1>🎯 实战练习</h1>
+  <p class="lead">拧真实的魔方（连 GAN356i），或者在屏幕上手动拧。想刺激就开<b>人机对战</b>。</p>
+
+  <div class="card" id="roadmap-host"></div>
+  <div class="card" id="practice-companion"></div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;">
+      <span class="pill" id="prac-state">未开始</span>
+      <span class="pill y" id="prac-stepspill">0 步</span>
+    </div>
+    <div class="viewwrap" style="margin-top:10px;"><div id="prac-3d"></div></div>
+    <div class="viewctrl" id="prac-viewctrl"></div>
+
+    <div class="row center" style="margin-top:12px;">
+      <div class="huge" id="prac-time" style="color:var(--blue)">0.0</div>
+      <div class="sub" style="margin-left:4px;">秒</div>
+    </div>
+
+    <div class="row center" style="margin-top:8px;">
+      <button class="btn alt sm" onclick="pracScramble()">🎲 打乱</button>
+      <button class="btn alt sm" onclick="pracReset()">↺ 复原</button>
+      <button class="btn green sm" onclick="pracConnectGAN()">📡 连 GAN356i</button>
+    </div>
+    <div class="row center" style="margin-top:8px;">
+      <button class="btn alt sm" onclick="ganCalibrate()">🔧 校准方向</button>
+      <button class="btn alt sm" onclick="ganZero()">↺ 归零同步</button>
+    </div>
+
+    <div class="divider"></div>
+    <div class="sub" style="margin-bottom:8px;">手动拧（也可以接键盘 U R F L D B，按住 Shift 表示 ′）</div>
+    <div id="prac-btns"></div>
+  </div>
+
+  <div class="card">
+    <h3>⚔️ 人机对战</h3>
+    <div class="sub">你和电脑用<b>同一个打乱</b>，谁先复原谁赢。电脑按难度执行解法。</div>
+    <div class="diffsel" id="diff-sel"></div>
+    <div class="battle-arena">
+      <div class="side me">
+        <div class="who">👦 我</div>
+        <div class="tm" id="bt-my">0.0</div>
+        <div class="mv" id="bt-mymv">0 步</div>
+      </div>
+      <div class="vsbar">VS</div>
+      <div class="side ai">
+        <div class="who" id="bt-aiwho">🤖 新手</div>
+        <div class="tm" id="bt-ai">0.0</div>
+        <div class="mv" id="bt-aimv">0 步</div>
+      </div>
+    </div>
+    <div class="row center" style="margin-top:6px;">
+      <button class="btn yellow" id="bt-start" onclick="battleStart()">⚔️ 开始比赛</button>
+      <button class="btn ghost sm" onclick="battleQuit()">结束</button>
+    </div>
+    <div class="sub center" style="margin-top:8px;" id="bt-msg">准备好了就开打！</div>
+    <div class="card tight" style="margin-top:10px;background:#f8fbff;">
+      <div class="row" style="justify-content:space-between;">
+        <span class="sub">战绩</span><span id="bt-record" class="mono">0 胜 / 0 负</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>📋 训练日志</h3>
+    <div class="log" id="prac-log"></div>
+  </div>
+</section>
+
+<!-- ============ 成就 ============ -->
+<section class="page" id="page-ach">
+  <h1>🏆 成就墙</h1>
+  <div class="card center">
+    <div class="huge" id="ach-stars">0 ⭐</div>
+    <div class="sub">总星星 · 连续 <b id="ach-streak">0</b> 天</div>
+  </div>
+  <h2>🎖️ 徽章</h2>
+  <div class="badges" id="ach-badges"></div>
+  <h2>🕘 最近记录</h2>
+  <div class="card"><div class="log" id="ach-log"></div></div>
+  <div class="row center" style="margin-top:16px;">
+    <button class="btn ghost sm" onclick="resetAll()">清空所有进度</button>
+  </div>
+</section>
+
+<!-- ============ GAN356i ============ -->
+<section class="page" id="page-gan">
+  <h1>🔵 GAN356i 智能魔方</h1>
+  <p class="lead">连上真魔方，你拧一步、屏幕跟着动一步，还自动计时。</p>
+  <div class="card">
+    <div class="row">
+      <button class="btn green" onclick="pracConnectGAN()">📡 连接魔方</button>
+      <button class="btn alt sm" onclick="ganSimMove()">🧪 模拟一步（测管线）</button>
+    </div>
+    <div class="okbox" id="gan-status" style="margin-top:12px;">还没连接。</div>
+  </div>
+  <div class="card">
+    <h3>🔧 校准与归零</h3>
+    <div class="sub">不同固件上报的"面序号"可能不一样。连上后如果屏幕上转的方向和手里的<b>对不上</b>，先点「校准方向」把 GAN 的每一面重新对应到你魔方的真实方向，再「归零」让屏幕和真魔方同步。</div>
+    <div class="row center" style="margin-top:10px;gap:10px;">
+      <button class="btn alt sm" onclick="ganCalibrate()">🧭 校准方向</button>
+      <button class="btn alt sm" onclick="ganZero()">↺ 归零同步</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>✅ 支持情况（很重要）</h3>
+    <div class="talk">
+      <div class="t"><b class="k">iPad / iPhone</b>苹果的 Safari <b>不支持</b>网页蓝牙。想在 iPad 上用真魔方计时，请用官方 <b>CubeStation</b> App，再把成绩对照本程序的进度。</div>
+      <div class="t"><b class="k">安卓 / 电脑</b>用 <b>Chrome</b> 或 <b>Edge</b> 打开本程序，即可直接连魔方。</div>
+      <div class="t"><b class="k">小提示</b>必须通过 <b>http://</b> 打开（用我们附带的启动器），直接双击文件时浏览器会禁用蓝牙。</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>🔧 连不上怎么办</h3>
+    <div class="log">
+      <div><span>1. 魔方已开机、电量足（GAN356i 短按开机）</span></div>
+      <div><span>2. 手机蓝牙已打开，且没被 CubeStation 占用</span></div>
+      <div><span>3. 用 Chrome / Edge，且地址是 http:// 开头</span></div>
+      <div><span>4. 还是不行 → 先用"模拟一步"确认程序本身正常</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 皮肤小屋 ============ -->
+<section class="page" id="page-skin">
+  <h1>🎨 皮肤小屋</h1>
+  <p class="lead">魔方皮肤只换<b>特效</b>，六个面的基础颜色永远保持经典六色，照样认色、照样复原；玩伴可以随便换，全部<b>免费</b>。</p>
+  <div id="skin-host"></div>
+</section>
+
+<!-- ============ 安装到 iPad ============ -->
+<section class="page" id="page-install">
+  <h1>📲 安装到 iPad</h1>
+  <p class="lead">装到桌面后，它就像普通 App 一样：全屏、有图标、断网也能用。</p>
+  <div class="card">
+    <h3>方法一：添加到主屏幕（推荐，1 分钟）</h3>
+    <div class="talk">
+      <div class="t"><b class="k">① 起服务</b>在电脑上双击 <span class="mono">启动服务器.bat</span>，记下窗口里显示的地址（形如 <span class="mono">http://192.168.x.x:8080</span>）。</div>
+      <div class="t"><b class="k">② 同一 WiFi</b>让 iPad 连上和电脑<b>同一个</b> WiFi。</div>
+      <div class="t"><b class="k">③ 打开</b>在 iPad 的 <b>Safari</b> 里输入那个地址。</div>
+      <div class="t"><b class="k">④ 安装</b>点右上角 <b>分享 ⤴</b> → 往下找 <b>「添加到主屏幕」</b> → 添加。</div>
+      <div class="t story"><b class="k">⑤ 完成</b>桌面会出现「魔方小将」图标。以后点图标直接全屏打开，<b>不需要</b>再开电脑（首次加载后已离线缓存）。</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>方法二：打包成真正的 .ipa（进阶）</h3>
+    <div class="sub" style="line-height:1.8;">如果一定要装成 App Store / TestFlight 那种原生包，需要用 Capacitor 把本项目套壳，再用 <b>Xcode</b>（必须 macOS）签名导出。<br>项目里已放好 <span class="mono">capacitor.config.json</span>，在 Mac 上依次执行：</div>
+    <div class="card tight mono" style="background:#1f2a3d;color:#c8e1ff;font-size:12.5px;line-height:1.9;overflow-x:auto;">
+      npm i @capacitor/core @capacitor/cli @capacitor/ios<br>
+      npx cap init 魔方小将 com.mofang.cfop --web-dir=.<br>
+      npx cap add ios<br>
+      npx cap open ios&nbsp;&nbsp;# 在 Xcode 里选你的 iPad 运行
+    </div>
+    <div class="warn" style="margin-top:10px;">这条路必须有 Mac + Apple 开发者账号（免费账号也能自签 7 天）。没有 Mac 的话，<b>方法一完全够用</b>，体验几乎一样。</div>
+  </div>
+</section>
+
+</main>
+
+<nav class="tabbar" id="tabbar">
+  <button data-page="home" class="on"><span class="ic">🏠</span>首页</button>
+  <button data-page="map"><span class="ic">🗺️</span>地图</button>
+  <button data-page="quest"><span class="ic">⚔️</span>闯关</button>
+  <button data-page="lib"><span class="ic">📚</span>公式</button>
+  <button data-page="practice"><span class="ic">🎯</span>实战</button>
+  <button data-page="skin"><span class="ic">🎨</span>皮肤</button>
+  <button data-page="ach"><span class="ic">🏆</span>成就</button>
+</nav>
+
+<div class="modal" id="modal">
+  <div class="sheet" id="sheet"></div>
+</div>
+
+<div class="toast" id="toast"></div>
