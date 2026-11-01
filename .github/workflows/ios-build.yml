@@ -19,7 +19,7 @@ jobs:
           node-version: 20
 
       - name: 安装依赖
-        run: npm install --no-audit --no-fund
+        run: npm install --omit=dev --no-audit --no-fund
 
       - name: 同步 Capacitor iOS 工程（含 pod install）
         run: npx cap sync ios
