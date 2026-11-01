@@ -282,6 +282,8 @@ let ganGen = 2;                     /* 协议代际 2/3/4 */
 let ganParseState = { lastSerial: -1 };
 let ganBattery = -1;
 let ganFaceletsTimer = null;
+let ganLastHandle = null;           /* 记住上次连过的设备，用于前后台自动重连 */
+let ganBackgroundRelease = false;   /* 后台主动断开标记（避免误报"断开了"） */
 
 function ganSetStatus(html) {
   const e = $('gan-status');
@@ -332,6 +334,7 @@ async function pracConnectGAN() {
   }
 
   ganSetStatus('找到 <b>' + (handle.name || '魔方') + '</b>，正在连接…');
+  ganLastHandle = handle;
 
   /* MAC 获取链：广播自动读取 → 历史记录 → 手动输入 */
   let mac = handle.mac || loadGanMac(handle.name);
@@ -424,6 +427,7 @@ function onGanDisconnect() {
   ganConn = null;
   ganEnc = null;
   if (ganFaceletsTimer) { clearTimeout(ganFaceletsTimer); ganFaceletsTimer = null; }
+  if (ganBackgroundRelease) { ganBackgroundRelease = false; return; }   /* 后台主动断开，不提示 */
   ganSetStatus('⚠️ 魔方断开了。点「连接魔方」重新连一次。');
   toast('魔方断开了');
 }
@@ -555,3 +559,62 @@ function ganZero() {
   if (typeof refreshPracUI === 'function') refreshPracUI();
   toast('↺ 已归零：请把真魔方也拧回复原状态，二者就同步了');
 }
+
+/* ---------------- 前后台自动连接 / 释放 ----------------
+   目标：魔方只跟「正在前台使用」的这个 App 连。
+   - 切到后台：主动断开，把魔方让给别的 App（或让魔方休眠）
+   - 回到前台：用记住的设备直接重连（无需再扫描） */
+async function ganReconnect(handle) {
+  let mac = handle.mac || loadGanMac(handle.name);
+  if (!mac) { pracConnectGAN(); return; }        /* 没记住 MAC → 走完整流程（会弹 MAC 框） */
+  try { ganEnc = ganMakeEncrypter(mac); } catch (e) { pracConnectGAN(); return; }
+  try {
+    ganConn = await BLE.connect(handle, onGanPacket, onGanDisconnect);
+  } catch (e) {
+    ganConn = null;
+    pracConnectGAN();                             /* 直接连失败（魔方睡着/ID 失效）→ 退回扫描 */
+    return;
+  }
+  const svc = (ganConn.service || '').toLowerCase();
+  ganGen = svc === BLE.GAN_GEN2_SERVICE ? 2
+        : (svc === BLE.GAN_GEN3_SERVICE ? 3
+        : (svc === BLE.GAN_GEN4_SERVICE ? 4 : 2));
+  ganParseState = { lastSerial: -1 };
+  ganBattery = -1;
+  try {
+    const cmd = ganCommand(ganGen, 'REQUEST_FACELETS');
+    if (cmd) await ganConn.write(ganEnc.encrypt(cmd));
+  } catch (e) {}
+  if (ganFaceletsTimer) clearTimeout(ganFaceletsTimer);
+  ganFaceletsTimer = setTimeout(() => {
+    if (ganParseState.lastSerial === -1 && ganConn) {
+      ganSetStatus('⏳ 已连接，但魔方还没同步状态…拧一下魔方，或关掉 CubeStation 再连一次。');
+    }
+  }, 3000);
+  ganSetStatus('✅ 已重新连接 <b>' + (handle.name || '魔方') + '</b>！拧真魔方试试。');
+  toast('已重新连接');
+  if (isSolved(pracCube) && currentPage === 'practice') pracScramble();
+}
+
+function ganAppStateSetup() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      /* 切到后台：主动断开，释放魔方 */
+      if (ganConn) {
+        ganBackgroundRelease = true;
+        try { ganConn.close(); } catch (e) {}
+        ganConn = null;
+        ganEnc = null;
+        if (ganFaceletsTimer) { clearTimeout(ganFaceletsTimer); ganFaceletsTimer = null; }
+        ganSetStatus('已切到后台，魔方已释放。回到前台会自动重连。');
+      }
+    } else {
+      /* 回到前台：之前连过就自动重连 */
+      if (ganLastHandle && !ganConn) {
+        ganSetStatus('正在重新连接魔方…');
+        ganReconnect(ganLastHandle);
+      }
+    }
+  });
+}
+ganAppStateSetup();
