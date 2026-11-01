@@ -30,6 +30,10 @@
 	<array>
 		<string>armv7</string>
 	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>需要蓝牙来连接你的 GAN 智能魔方：连上后，你拧一步屏幕上的魔方就跟着转一步，还会自动计时。</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>需要蓝牙来连接你的 GAN 智能魔方。</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

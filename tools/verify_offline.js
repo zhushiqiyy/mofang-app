@@ -1,13 +1,29 @@
 /* 离线能力实测：Edge 加载页面 → 等 SW 注册激活 → 断网 → 刷新 → 页面仍可用 */
 const { chromium } = require('playwright-core');
-const { execSync, spawn } = require('child_process');
+const { spawn } = require('child_process');
+const path = require('path');
+const http = require('http');
 
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const BASE = 'http://localhost:8080';
 
+function probe() {
+  return new Promise(res => {
+    const req = http.get(BASE + '/', r => { r.resume(); res(r.statusCode === 200); });
+    req.on('error', () => res(false));
+    req.setTimeout(1000, () => { req.destroy(); res(false); });
+  });
+}
+
 (async () => {
-  const srv = spawn(process.execPath, ['serve.js'], { cwd: __dirname, stdio: 'ignore' });
-  await new Promise(r => setTimeout(r, 1500));
+  /* 若端口已有服务则复用，否则启动并轮询就绪 */
+  let srv = null;
+  if (!(await probe())) {
+    srv = spawn(process.execPath, ['serve.js'], { cwd: path.resolve(__dirname, '..'), stdio: 'ignore' });
+    for (let i = 0; i < 20 && !(await probe()); i++) await new Promise(r => setTimeout(r, 500));
+    if (!(await probe())) { console.log('ERROR: server failed to start'); if (srv) srv.kill(); process.exit(1); }
+  }
+  console.log('server ready');
   let browser;
   try {
     browser = await chromium.launch({ executablePath: EDGE, headless: true });

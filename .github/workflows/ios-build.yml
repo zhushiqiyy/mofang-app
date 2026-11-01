@@ -21,6 +21,9 @@ jobs:
       - name: 安装依赖
         run: npm install --omit=dev --no-audit --no-fund
 
+      - name: 构建 Web 资源（生成 www/ 并注入 Capacitor 运行时）
+        run: node build.js
+
       - name: 同步 Capacitor iOS 工程（含 pod install）
         run: npx cap sync ios
 

@@ -82,6 +82,33 @@ ok('confirm 仅用于 resetAll 危险操作确认', (html.match(/confirm\(/g) ||
 ok('无 debugger 语句', !has('debugger'));
 
 console.log('');
+console.log('== 9. 蓝牙魔方（双平台桥接 + GAN 协议）==');
+ok('BLE 桥接层存在', has('const BLE = (function'));
+ok('桥接层含原生路径（Capacitor）', has('capacitorCommunityBluetoothLe') && has('startLEScan'));
+ok('桥接层含网页路径（Web Bluetooth）', has('navigator.bluetooth.requestDevice'));
+ok('业务代码不直接调用 Web Bluetooth（只经桥接层）', (html.match(/navigator\.bluetooth\.requestDevice/g) || []).length === 1);
+ok('AES-128 实现存在', has('AES_SBOX') && has('aesExpandKey') && has('aesEncryptBlock') && has('aesDecryptBlock'));
+ok('GAN 加密器（MAC 派生密钥）', has('ganMakeEncrypter') && has('% 255'));
+ok('GAN 三代协议解析', has('ganGen2Parse') && has('ganGen3Parse') && has('ganGen4Parse'));
+ok('MAC 广播提取', has('macFromManufacturerData'));
+ok('连接后请求面块状态', has('REQUEST_FACELETS'));
+ok('手动输入 MAC 兜底', has('ganAskMac') && has('gan_mac_map'));
+
+console.log('== 10. iOS 原生工程（iPad 连魔方的唯一路径）==');
+const iosDir = path.join(__dirname, '..', 'ios', 'App');
+ok('iOS 工程存在', fs.existsSync(iosDir));
+ok('Podfile 含 BLE 插件', fs.existsSync(path.join(iosDir, 'Podfile')) &&
+   fs.readFileSync(path.join(iosDir, 'Podfile'), 'utf8').includes('CapacitorCommunityBluetoothLe'));
+const plist = fs.readFileSync(path.join(iosDir, 'App', 'Info.plist'), 'utf8');
+ok('Info.plist 含蓝牙权限说明', plist.includes('NSBluetoothAlwaysUsageDescription'));
+ok('Info.plist 锁竖屏', plist.includes('UIInterfaceOrientationPortrait') && !plist.includes('Landscape'));
+ok('共享 scheme 存在', fs.existsSync(path.join(iosDir, 'App.xcodeproj', 'xcshareddata', 'xcschemes', 'App.xcscheme')));
+ok('www 含 capacitor.js 运行时', fs.existsSync(path.join(iosDir, 'App', 'public', 'capacitor.js')));
+ok('www 含 bluetooth-le.js 插件', fs.existsSync(path.join(iosDir, 'App', 'public', 'bluetooth-le.js')));
+ok('www/index.html 注入运行时脚本', fs.readFileSync(path.join(iosDir, 'App', 'public', 'index.html'), 'utf8').includes('<script src="bluetooth-le.js"></script>'));
+ok('package.json 依赖 BLE 插件', JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).dependencies['@capacitor-community/bluetooth-le']);
+
+console.log('');
 console.log('结果: ' + pass + ' 通过, ' + fails.length + ' 失败');
 if (fails.length) { console.log('失败项: ' + fails.join(' | ')); process.exit(1); }
 console.log('✅ 静态验收全部通过');

@@ -19,3 +19,6 @@ desktop.ini
 .DS_Store
 # Edge 测试残留
 .edgeprof/
+
+# 原生构建产物（由 build.js 生成，CI 会重新构建）
+www/
