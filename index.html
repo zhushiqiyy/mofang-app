@@ -4677,16 +4677,8 @@ const FACE_COLOR = { U:'#FFFFFF', D:'#FFD500', F:'#009E54', B:'#0051BA', R:'#E81
 
 function ganCalibrate() {
   const faces = ['U', 'R', 'F', 'D', 'L', 'B'];
-  const iso = `
-    <svg viewBox="0 0 200 170" width="210" height="178" style="margin:0 auto;display:block;">
-      <polygon points="100,20 165,55 100,90 35,55" fill="#FFFFFF" stroke="#cfcfcf" stroke-width="1.5"/>
-      <polygon points="35,55 100,90 100,153 35,118" fill="#009E54" stroke="#cfcfcf" stroke-width="1.5"/>
-      <polygon points="100,90 165,55 165,118 100,153" fill="#E8121D" stroke="#cfcfcf" stroke-width="1.5"/>
-      <text x="100" y="62" text-anchor="middle" font-size="15" font-weight="800" fill="#333">U 上(白)</text>
-      <text x="66" y="120" text-anchor="middle" font-size="13" font-weight="800" fill="#fff">F 前(绿)</text>
-      <text x="133" y="120" text-anchor="middle" font-size="13" font-weight="800" fill="#fff">R 右(红)</text>
-    </svg>
-    <div class="sub center" style="margin-top:6px;">背面三面：<b>D 下</b>(黄) · <b>L 左</b>(橙) · <b>B 后</b>(蓝)</div>`;
+  const iso = '<div id="gan-iso-cube" style="width:230px;max-width:80%;margin:0 auto;"></div>'
+    + '<div class="sub center" style="margin-top:8px;">六面颜色：<b>U 上</b>白 · <b>F 前</b>绿 · <b>R 右</b>红 · <b>D 下</b>黄 · <b>L 左</b>橙 · <b>B 后</b>蓝</div>';
 
   let rows = '';
   for (let i = 0; i < 6; i++) {
@@ -4714,6 +4706,8 @@ function ganCalibrate() {
     + '<button class="btn alt" onclick="closeModal()">取消</button>'
     + '</div>';
   $('modal').classList.add('show');
+  /* 渲染真实 3×3 魔方（每个面 9 格），供对照校准 */
+  try { drawCube($('gan-iso-cube'), solvedCube(), { yaw: Math.PI/4, pitch: Math.PI/6 }); } catch (e) {}
 }
 
 function ganSwatch(i) {

@@ -3,7 +3,7 @@
  *       图片/图标走「缓存优先」；断网时自动回退到缓存，仍可离线使用。
  * 版本号由 build.js 在构建时替换，每次构建都会换新缓存并清掉旧的。
  */
-const CACHE = 'mofang-mvxxcrae';
+const CACHE = 'mofang-mvxyfgks';
 const PRECACHE = [
   '.',
   'index.html',
