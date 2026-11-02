@@ -330,8 +330,10 @@ async function pracConnectGAN() {
     });
   } catch (err) {
     const m = (err && err.message) || String(err);
-    if (m === 'SCAN_TIMEOUT') {
-      ganSetStatus('❌ 没找到魔方。检查：① 拧白面唤醒（白灯闪 3 下）② 魔方没被 CubeStation 占用 ③ 蓝牙已打开 ④ 不是「文件」方式打开');
+    if (m.indexOf('SCAN_TIMEOUT') === 0) {
+      ganSetStatus('❌ 没找到魔方。' + m.slice('SCAN_TIMEOUT|'.length) +
+        '<br>检查：① 拧白面唤醒（白灯闪3下）② 彻底退出 CubeStation ③ 蓝牙已开 '
+        + '④ 设置→隐私与安全性→蓝牙，确认「魔方小将」有权限');
     } else if (m === 'BLUETOOTH_OFF') {
       ganSetStatus('❌ 蓝牙没开：请到「设置 → 蓝牙」里打开');
     } else if (/cancel|NotFound/i.test(m)) {

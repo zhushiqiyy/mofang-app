@@ -18,8 +18,11 @@ try {
   } else if (src.indexOf(after) >= 0) {
     console.log('[patch-ble] 已修补过，跳过');
   } else {
-    console.log('[patch-ble] 未找到目标行，跳过（可能插件版本变化）');
+    // 找不到目标行说明插件版本变了，必须让构建失败而不是静默带病打包
+    console.error('[patch-ble] ❌ 未找到目标行，插件版本可能已变化，终止构建');
+    process.exit(1);
   }
 } catch (e) {
-  console.log('[patch-ble] 跳过（未安装蓝牙插件）: ' + e.message);
+  console.error('[patch-ble] ❌ 补丁失败：' + e.message);
+  process.exit(1);
 }

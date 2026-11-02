@@ -150,6 +150,8 @@ const BLE = (function () {
     return new Promise((resolve, reject) => {
       let settled = false;
       let rescanTimer = null, timeoutTimer = null;
+      const seen = [];
+      let fallback = null;   /* 名字为空但带厂商数据的候选（部分魔方不广播名字） */
 
       const cleanup = async () => {
         if (rescanTimer) clearTimeout(rescanTimer);
@@ -160,6 +162,11 @@ const BLE = (function () {
       const onResult = (r) => {
         if (settled) return;
         const name = (r.device && r.device.name) || r.localName || '';
+        if (seen.indexOf(name) < 0) seen.push(name);
+        const hasMD = r.manufacturerData && Object.keys(r.manufacturerData).length > 0;
+        if (!name && hasMD && !fallback) {
+          fallback = { id: r.device.deviceId, name: name, mac: macFromManufacturerData(r.manufacturerData) };
+        }
         if (!nameLooksLikeCube(name)) return;
         const mac = macFromManufacturerData(r.manufacturerData);
         settled = true;
@@ -183,7 +190,15 @@ const BLE = (function () {
       timeoutTimer = setTimeout(() => {
         if (settled) return;
         settled = true;
-        cleanup().then(() => reject(new Error('SCAN_TIMEOUT')));
+        /* 名字匹配不到，但有带厂商数据的无名设备 → 当作魔方兜底连接 */
+        if (fallback) {
+          cleanup().then(() => resolve(fallback));
+          return;
+        }
+        const info = seen.length
+          ? '（扫描期间看到 ' + seen.length + ' 个设备：' + seen.filter(s => s).slice(0, 8).join('、') + (seen.length > 8 ? '…' : '') + '）'
+          : '（扫描期间一个设备都没看到）';
+        cleanup().then(() => reject(new Error('SCAN_TIMEOUT|' + info)));
       }, 25000);
     });
   }
