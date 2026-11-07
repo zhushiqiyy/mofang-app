@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>魔方广播服务诊断</title>
+<style>
+  body{font-family:-apple-system,"Microsoft YaHei",sans-serif;max-width:640px;margin:20px auto;padding:0 16px;line-height:1.7;color:#222;}
+  h2{margin-bottom:4px;}
+  .box{border:1px solid #ddd;border-radius:10px;padding:14px;margin:12px 0;background:#fafafa;}
+  .ok{color:#0a7d32;} .bad{color:#c62828;} .warn{color:#b26a00;}
+  button{font-size:16px;padding:12px 22px;border:0;border-radius:8px;background:#1565c0;color:#fff;cursor:pointer;margin:6px 4px 6px 0;}
+  #out{font-size:15px;white-space:pre-wrap;word-break:break-all;}
+  small{color:#666;}
+</style>
+</head>
+<body>
+<h2>📡 魔方广播服务诊断</h2>
+<p><small>判断：魔方广播里到底带不带「服务 UUID」</small></p>
+
+<div class="box" id="env">检测中…</div>
+
+<button onclick="step1()">① 确认魔方在广播（列出所有设备）</button>
+<button onclick="step2()">② 判断广播是否带服务（只找 GAN 服务）</button>
+
+<div class="box" id="out" style="display:none;"></div>
+
+<script>
+const GAN_SVC = '6e400001-b5a3-f393-e0a9-e50e24dc4179';
+
+(function(){
+  const env = document.getElementById('env');
+  const hasBT = !!(navigator.bluetooth && navigator.bluetooth.requestDevice);
+  const secure = window.isSecureContext && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+  env.innerHTML =
+    (hasBT ? '<span class="ok">✅</span>' : '<span class="bad">❌</span>') + ' Web Bluetooth：' + (hasBT ? '支持' : '不支持') + '<br>' +
+    (secure ? '<span class="ok">✅</span>' : '<span class="bad">❌</span>') + ' 安全环境：' + (secure ? '是' : '否（必须 http://localhost 打开）');
+})();
+
+async function step1(){
+  const out = document.getElementById('out');
+  out.style.display = 'block';
+  out.innerHTML = '正在打开选择框…\n\n【步骤①】选择框会列出<b>所有</b>附近设备。请确认里面有 GAN 魔方（说明它在广播）。\n\n选不选都行，先看看里面有没有魔方。';
+  try {
+    const d = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [GAN_SVC] });
+    out.innerHTML += '\n\n你选中了：' + (d.name || '(无名)');
+    try { d.gatt.disconnect(); } catch(e){}
+  } catch(e) {
+    out.innerHTML += '\n\n<span class="warn">（已取消选择）</span>';
+  }
+}
+
+async function step2(){
+  const out = document.getElementById('out');
+  out.style.display = 'block';
+  out.innerHTML = '正在按「GAN 服务 UUID」过滤扫描…\n\n【步骤②】这次只找<b>广播里声明了 6e400001 服务</b>的设备。\n\n👉 请看选择框：';
+  try {
+    const d = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [GAN_SVC] }],
+      optionalServices: [GAN_SVC]
+    });
+    out.innerHTML += '\n\n<span class="ok">✅ 选择框里出现了设备，你选中了：' + (d.name || '(无名)') + '</span>'
+      + '\n\n<span class="ok">【结论】魔方广播<b>带</b>服务 UUID（6e400001）→ iPad 用「按服务过滤」扫描就应该能扫到魔方</span>';
+    try { d.gatt.disconnect(); } catch(e){}
+  } catch(e) {
+    if (e.name === 'NotFoundError') {
+      out.innerHTML += '\n\n<span class="warn">【结论】选择框里<b>没有</b>任何设备 → 魔方广播<b>不带</b>服务 UUID（或魔方此刻没唤醒）</span>'
+        + '\n\n如果步骤①明明能看到魔方，这里却找不到，就说明：魔方广播不带服务 UUID，iPad 必须用「全量扫描」。';
+    } else {
+      out.innerHTML += '\n\n<span class="bad">❌ 出错：' + e.name + ' - ' + e.message + '</span>';
+    }
+  }
+}
+</script>
+</body>
+</html>

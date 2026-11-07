@@ -176,20 +176,19 @@ const BLE = (function () {
         cleanup().then(() => resolve({ id: r.device.deviceId, name: name, mac: mac }));
       };
 
-      /* 第一轮：按 GAN 服务 UUID 过滤扫描。
-         实测（电脑 Web Bluetooth）确认魔方在广播里带了 6e400001 服务 UUID，
-         所以直接按服务过滤就能命中，完全不依赖「空数组全扫」的补丁。 */
-      P.requestLEScan({ services: GAN_SERVICE_UUIDS, allowDuplicates: true }, onResult)
+      /* 第一轮：空数组全扫。实测（bt-adv 诊断）确认魔方广播【不带】服务 UUID，
+         所以必须全量扫描才能发现它；空数组依赖补丁把 [] 转 nil 才能全扫。 */
+      P.requestLEScan({ services: [], allowDuplicates: true }, onResult)
         .then(() => { scanStarted = true; })
         .catch((e) => { scanError = (e && e.message) || String(e); });
 
-      /* 6 秒还没找到：换成空数组全扫兜底（依赖补丁把 [] 转 nil，覆盖不广播服务 UUID 的魔方） */
+      /* 6 秒还没找到：按 GAN 服务 UUID 过滤兜底（覆盖那些广播带服务的魔方型号） */
       rescanTimer = setTimeout(() => {
         if (settled) return;
         P.stopLEScan().catch(() => {}).then(() => {
           if (settled) return;
           if (onStatus) onStatus('rescan');
-          P.requestLEScan({ services: [], allowDuplicates: true }, onResult)
+          P.requestLEScan({ services: GAN_SERVICE_UUIDS, allowDuplicates: true }, onResult)
             .then(() => { scanStarted = true; })
             .catch((e) => { scanError = (e && e.message) || String(e); });
         });
