@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>读取魔方 MAC 地址</title>
+<style>
+  body{font-family:-apple-system,"Microsoft YaHei",sans-serif;max-width:640px;margin:20px auto;padding:0 16px;line-height:1.7;color:#222;}
+  h2{margin-bottom:4px;}
+  .box{border:1px solid #ddd;border-radius:10px;padding:14px;margin:12px 0;background:#fafafa;}
+  .ok{color:#0a7d32;} .bad{color:#c62828;} .warn{color:#b26a00;}
+  button{font-size:16px;padding:12px 22px;border:0;border-radius:8px;background:#1565c0;color:#fff;cursor:pointer;}
+  #out{font-size:18px;white-space:pre-wrap;word-break:break-all;font-weight:bold;}
+  .mac{font-size:22px;color:#c62828;letter-spacing:1px;}
+  small{color:#666;}
+</style>
+</head>
+<body>
+<h2>🔑 读取魔方 MAC 地址</h2>
+<p><small>注意：此页需要 <b>Chrome</b>（Edge 旧版不支持读广播）。打开后拧魔方唤醒。</small></p>
+<button onclick="go()">开始读取 MAC</button>
+<div class="box" id="out" style="display:none;"></div>
+
+<script>
+const GAN_SVC = '6e400001-b5a3-f393-e0a9-e50e24dc4179';
+
+async function go(){
+  const out = document.getElementById('out');
+  out.style.display = 'block';
+  if (typeof navigator.bluetooth === 'undefined' || !navigator.bluetooth.requestDevice) {
+    out.innerHTML = '<span class="bad">此浏览器不支持，请用 Chrome 且通过 http://localhost 打开</span>';
+    return;
+  }
+  if (typeof BluetoothDevice === 'undefined' || !BluetoothDevice.prototype.watchAdvertisements) {
+    out.innerHTML = '<span class="bad">此浏览器不支持读广播，请换最新版 Chrome</span>';
+    return;
+  }
+  out.innerHTML = '正在打开选择框…请拧魔方唤醒，然后选 GAN 魔方';
+  let device;
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [GAN_SVC],
+      optionalManufacturerData: Array.from({length: 256}, (_, i) => (i << 8) | 0x01)
+    });
+  } catch(e) {
+    out.innerHTML = '<span class="warn">选择框取消或无设备：' + e.name + '</span>';
+    return;
+  }
+  out.innerHTML = '已选：' + (device.name || '(无名)') + '\n正在读广播里的 MAC（请持续拧动魔方）…';
+
+  const onAdv = (event) => {
+    const md = event.manufacturerData;
+    if (!md) return;
+    for (const key of Array.from(md.keys())) {
+      const dv = md.get(key);
+      const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+      if (bytes.length < 6) continue;
+      const n = Math.min(bytes.length, 9);
+      const mac = [];
+      for (let i = 1; i <= 6; i++) mac.push(bytes[n - i].toString(16).padStart(2, '0'));
+      out.innerHTML = '<span class="ok">✅ 读取成功！</span>魔方 MAC 地址：<br><span class="mac">' + mac.join(':').toUpperCase() + '</span>'
+        + '<br><br>把上面这串地址填到 App 的「需要魔方MAC地址」输入框里即可。';
+      try { device.removeEventListener('advertisementreceived', onAdv); } catch(e){}
+    }
+  };
+  device.addEventListener('advertisementreceived', onAdv);
+  try { await device.watchAdvertisements(); } catch(e) {
+    out.innerHTML = '<span class="bad">读广播失败：' + e.message + '</span>';
+  }
+  setTimeout(() => {
+    try { device.removeEventListener('advertisementreceived', onAdv); } catch(e){}
+    if (!out.innerHTML.includes('成功')) {
+      out.innerHTML += '\n\n<span class="warn">20 秒没读到，请重新拧魔方唤醒再点一次按钮。</span>';
+    }
+  }, 20000);
+}
+</script>
+</body>
+</html>
