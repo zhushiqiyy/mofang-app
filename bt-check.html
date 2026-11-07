@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>电脑蓝牙诊断</title>
+<style>
+  body{font-family:-apple-system,"Microsoft YaHei",sans-serif;max-width:640px;margin:20px auto;padding:0 16px;line-height:1.7;color:#222;}
+  h2{margin-bottom:4px;}
+  .box{border:1px solid #ddd;border-radius:10px;padding:14px;margin:12px 0;background:#fafafa;}
+  .ok{color:#0a7d32;} .bad{color:#c62828;} .warn{color:#b26a00;}
+  button{font-size:16px;padding:12px 22px;border:0;border-radius:8px;background:#1565c0;color:#fff;cursor:pointer;margin:6px 4px 6px 0;}
+  button:disabled{background:#9e9e9e;}
+  #list{font-size:15px;white-space:pre-wrap;word-break:break-all;}
+  .cube{background:#e8f5e9;border:2px solid #2e7d32;border-radius:8px;padding:8px;margin:6px 0;}
+  .dev{border:1px solid #ccc;border-radius:8px;padding:8px;margin:6px 0;}
+  small{color:#666;}
+</style>
+</head>
+<body>
+<h2>🔍 电脑蓝牙诊断</h2>
+<p><small>目的：直接回答「电脑蓝牙是否正常」「魔方是否在广播」两个问题</small></p>
+
+<div class="box" id="env">检测中…</div>
+
+<button id="btnScan" onclick="doScan()">① 扫描所有蓝牙设备</button>
+<button id="btnConnect" onclick="doConnect()" disabled>② 连接选中的设备并读服务</button>
+
+<div class="box" id="list" style="display:none;"></div>
+
+<script>
+const GAN_SVC = '6e400001-b5a3-f393-e0a9-e50e24dc4179'; // GAN Gen2 服务 UUID
+let picked = null;
+
+/* 环境检测 */
+(function(){
+  const env = document.getElementById('env');
+  const lines = [];
+  const hasBT = !!(navigator.bluetooth && navigator.bluetooth.requestDevice);
+  lines.push((hasBT ? '<span class="ok">✅</span>' : '<span class="bad">❌</span>')
+    + ' Web Bluetooth 支持：' + (hasBT ? '支持' : '不支持（请换 Chrome / Edge）'));
+  lines.push((window.isSecureContext ? '<span class="ok">✅</span>' : '<span class="bad">❌</span>')
+    + ' 安全环境：' + (window.isSecureContext ? '是（localhost 或 https）' : '否（必须用 http://localhost 打开，不能用 192.168 地址）'));
+  lines.push((location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+    ? '<span class="ok">✅</span>' : '<span class="warn">⚠️</span>')
+    + ' 当前地址：' + location.href);
+  env.innerHTML = lines.join('<br>');
+})();
+
+async function doScan(){
+  const list = document.getElementById('list');
+  list.style.display = 'block';
+  if (!(navigator.bluetooth && navigator.bluetooth.requestDevice)) {
+    list.innerHTML = '<span class="bad">❌ 此浏览器不支持 Web Bluetooth，请用 Chrome / Edge，并确保通过 http://localhost:8080 打开。</span>';
+    return;
+  }
+  list.innerHTML = '正在打开设备选择框…\n\n👉 请观察选择框里列出了哪些设备（这是「所有」附近设备，不限于魔方）';
+  try {
+    const device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [GAN_SVC]
+    });
+    picked = device;
+    const name = device.name || '(无名设备)';
+    const isCube = /^(GAN|MG|AiCube|MoYu)/i.test(name);
+    list.innerHTML = (isCube ? '<span class="ok">✅ 选中了疑似魔方！</span>' : '选中了：') + name
+      + '\n设备ID: ' + device.id
+      + '\n\n现在点「② 连接选中的设备并读服务」继续测试连接。';
+    document.getElementById('btnConnect').disabled = false;
+  } catch(e) {
+    list.innerHTML = '<span class="warn">⚠️ ' + (e.name === 'NotFoundError' ? '选择框被取消，或里面没有任何设备。' : e.name) + '</span>'
+      + '\n\n' + e.message
+      + '\n\n这通常说明：电脑此刻没扫到任何蓝牙设备 —— 请确认：'
+      + '\n  ① 魔方已唤醒且在电脑旁（1 米内）'
+      + '\n  ② 电脑蓝牙开关是开的（Win+I → 蓝牙和其他设备）'
+      + '\n  ③ 魔方没被 iPad / CubeStation 占着';
+  }
+}
+
+async function doConnect(){
+  const list = document.getElementById('list');
+  if (!picked) return;
+  list.innerHTML = '正在连接 ' + (picked.name || '(无名设备)') + ' …';
+  try {
+    const server = await picked.gatt.connect();
+    list.innerHTML = '<span class="ok">✅ 连接成功！</span>';
+    try {
+      const services = await server.getPrimaryServices();
+      list.innerHTML += '\n\n服务数量: ' + services.length;
+      for (const s of services) {
+        const isGan = s.uuid.toLowerCase() === GAN_SVC;
+        list.innerHTML += '\n  ' + (isGan ? '⭐ ' : '· ') + s.uuid + (isGan ? '  ← GAN 魔方服务（说明是魔方！）' : '');
+      }
+      if (!services.some(s => s.uuid.toLowerCase() === GAN_SVC)) {
+        list.innerHTML += '\n\n<span class="warn">⚠️ 没有 GAN 服务，这个设备可能不是魔方。</span>';
+      }
+    } catch(e) {
+      list.innerHTML += '\n\n读服务失败: ' + e.message;
+    }
+    try { picked.gatt.disconnect(); } catch(e){}
+  } catch(e) {
+    list.innerHTML = '<span class="bad">❌ 连接失败: ' + e.message + '</span>'
+      + '\n\n常见原因：魔方被别的设备占用（先关掉 iPad 上的 App / CubeStation）。';
+  }
+}
+</script>
+</body>
+</html>
