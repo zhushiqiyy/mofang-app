@@ -65,7 +65,31 @@ console.log('✅ 构建完成 index.html (' + kb + ' KB)');
 console.log('   模块: ' + JS_PARTS.length + ' 个 JS + ' + HTML_PARTS.length + ' 个 HTML');
 
 /* 生成原生 App 的 web 资源（www/）：注入 Capacitor 运行时 + BLE 插件 JS */
+patchBle();   /* 先补丁 iOS 扫描（内联在 build.js，不依赖 npm postinstall） */
 buildNative();
+
+/* iOS 蓝牙扫描补丁：CoreBluetooth 的 scanForPeripherals(withServices:) 传空数组 []
+   会一个设备都扫不到（必须 nil 才全扫）。@capacitor-community/bluetooth-le 的
+   getServiceUUIDs 会把空 services 原样变成 []，导致全量扫描空转。
+   这里在每次构建时直接改插件 Swift 源码，并读回验证，补丁失败则终止构建。 */
+function patchBle() {
+  const f = path.join(ROOT, 'node_modules/@capacitor-community/bluetooth-le/ios/Plugin/DeviceManager.swift');
+  if (!fs.existsSync(f)) return; // 未安装插件（纯 PWA 构建），跳过
+  const before = 'withServices: serviceUUIDs,';
+  const after = 'withServices: serviceUUIDs.isEmpty ? nil : serviceUUIDs,';
+  let src = fs.readFileSync(f, 'utf8');
+  if (src.indexOf(before) >= 0) {
+    src = src.replace(before, after);
+    fs.writeFileSync(f, src);
+    console.log('   [patch-ble] 已内联修补 iOS 空服务扫描（[] → nil）');
+  }
+  /* 硬验证：读回确认补丁已生效，否则终止构建（不再静默带病打包） */
+  const check = fs.readFileSync(f, 'utf8');
+  if (check.indexOf(after) < 0) {
+    console.error('[patch-ble] ❌ iOS 扫描补丁未生效（插件版本可能已变化），终止构建');
+    process.exit(1);
+  }
+}
 
 function buildNative() {
   const wwwDir = path.join(ROOT, 'www');
