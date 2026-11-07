@@ -29,13 +29,25 @@ jobs:
 
       - name: 验证蓝牙扫描补丁已生效（node_modules 与 Pods 双重检查）
         run: |
-          echo "=== node_modules 补丁状态 ==="
-          grep -n "isEmpty ? nil" node_modules/@capacitor-community/bluetooth-le/ios/Plugin/DeviceManager.swift && echo "OK: node_modules 已补丁" || (echo "FAIL: node_modules 未补丁" && exit 1)
-          echo "=== Pods 编译源码补丁状态 ==="
-          find ios/App/Pods -name "DeviceManager.swift" -path "*bluetooth*" 2>/dev/null | while read f; do
-            echo "检查: $f"
-            grep -q "isEmpty ? nil" "$f" && echo "  OK: 已补丁" || echo "  FAIL: 未补丁（这是编译实际用的源码！）"
-          done
+          echo "=== 1) node_modules 补丁状态 ==="
+          grep -q "isEmpty ? nil" node_modules/@capacitor-community/bluetooth-le/ios/Plugin/DeviceManager.swift && echo "OK: node_modules 已补丁" || { echo "FAIL: node_modules 未补丁"; exit 1; }
+          echo "=== 2) Pods 编译源码补丁状态 ==="
+          POD_FILES=$(find ios/App/Pods -name "DeviceManager.swift" 2>/dev/null)
+          if [ -z "$POD_FILES" ]; then
+            echo "警告: Pods 里未找到 DeviceManager.swift（pod install 未生成或路径不同，需人工确认）"
+          else
+            ALL_OK=1
+            for f in $POD_FILES; do
+              if grep -q "isEmpty ? nil" "$f"; then
+                echo "OK: $f"
+              else
+                echo "FAIL: $f  ← 这是编译实际用的源码，未补丁！"
+                ALL_OK=0
+              fi
+            done
+            if [ "$ALL_OK" = "0" ]; then echo "补丁未在 Pods 生效，终止"; exit 1; fi
+          fi
+          echo "=== 补丁验证通过 ==="
 
       - name: 编译并打包未签名 IPA
         run: |
