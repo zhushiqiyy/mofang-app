@@ -3985,6 +3985,8 @@ const BLE = (function () {
       let rescanTimer = null, timeoutTimer = null;
       const seen = [];
       let fallback = null;   /* 名字为空但带厂商数据的候选（部分魔方不广播名字） */
+      let scanStarted = false;  /* 扫描是否真正启动（requestLEScan resolve / 收到回调） */
+      let scanError = null;     /* requestLEScan 若 reject，记录错误 */
 
       const cleanup = async () => {
         if (rescanTimer) clearTimeout(rescanTimer);
@@ -3994,6 +3996,7 @@ const BLE = (function () {
 
       const onResult = (r) => {
         if (settled) return;
+        scanStarted = true;   /* 收到任何扫描回调都说明底层扫描在工作 */
         const name = (r.device && r.device.name) || r.localName || '';
         if (seen.indexOf(name) < 0) seen.push(name);
         const hasMD = r.manufacturerData && Object.keys(r.manufacturerData).length > 0;
@@ -4007,7 +4010,9 @@ const BLE = (function () {
       };
 
       /* 第一轮：全量扫描（iOS 前台能看到所有广播包，再按名字过滤，最稳） */
-      P.requestLEScan({ services: [], allowDuplicates: true }, onResult).catch(() => {});
+      P.requestLEScan({ services: [], allowDuplicates: true }, onResult)
+        .then(() => { scanStarted = true; })
+        .catch((e) => { scanError = (e && e.message) || String(e); });
 
       /* 6 秒还没找到：换成按 GAN 服务 UUID 过滤再扫一轮（兼容空列表不被接受的情况） */
       rescanTimer = setTimeout(() => {
@@ -4028,9 +4033,16 @@ const BLE = (function () {
           cleanup().then(() => resolve(fallback));
           return;
         }
-        const info = seen.length
-          ? '（扫描期间看到 ' + seen.length + ' 个设备：' + seen.filter(s => s).slice(0, 8).join('、') + (seen.length > 8 ? '…' : '') + '）'
-          : '（扫描期间一个设备都没看到）';
+        let info;
+        if (!scanStarted && scanError) {
+          info = '（扫描未能启动：' + scanError + '）';
+        } else if (!scanStarted) {
+          info = '（扫描未能启动，且无错误信息）';
+        } else if (seen.length) {
+          info = '（扫描期间看到 ' + seen.length + ' 个设备：' + seen.filter(s => s).slice(0, 8).join('、') + (seen.length > 8 ? '…' : '') + '）';
+        } else {
+          info = '（扫描已启动，但 25 秒内一个设备都没扫到——可能是权限被拒或魔方没广播）';
+        }
         cleanup().then(() => reject(new Error('SCAN_TIMEOUT|' + info)));
       }, 25000);
     });
