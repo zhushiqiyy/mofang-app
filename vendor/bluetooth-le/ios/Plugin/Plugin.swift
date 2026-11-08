@@ -37,6 +37,15 @@ public class BluetoothLe: CAPPlugin {
         call.resolve(["value": enabled])
     }
 
+    /* 诊断：返回 centralManager 状态字符串 */
+    @objc func getState(_ call: CAPPluginCall) {
+        guard let deviceManager = self.getDeviceManager(call) else {
+            call.reject("deviceManager 未初始化（请先调用 initialize）")
+            return
+        }
+        call.resolve(["state": deviceManager.stateString()])
+    }
+
     @objc func requestEnable(_ call: CAPPluginCall) {
         call.unavailable("requestEnable is not available on iOS.")
     }

@@ -68,6 +68,19 @@ class DeviceManager: NSObject, CBCentralManagerDelegate {
         return self.centralManager.state == CBManagerState.poweredOn
     }
 
+    /* 诊断：返回 centralManager 状态的字符串，用于排查扫描为何无结果 */
+    func stateString() -> String {
+        switch self.centralManager.state {
+        case .poweredOn: return "poweredOn(已开启)"
+        case .poweredOff: return "poweredOff(蓝牙关闭)"
+        case .unauthorized: return "unauthorized(权限被拒)"
+        case .unsupported: return "unsupported(设备不支持)"
+        case .resetting: return "resetting(重置中)"
+        case .unknown: return "unknown(未知)"
+        @unknown default: return "other"
+        }
+    }
+
     func registerStateReceiver( _ stateReceiver: @escaping StateReceiver) {
         self.stateReceiver = stateReceiver
     }

@@ -141,6 +141,13 @@ const BLE = (function () {
     if (!P) throw new Error('NO_PLUGIN');
     await P.initialize();
 
+    /* 诊断：读取 centralManager 状态（排查扫描无结果的关键信息） */
+    let btState = '未知';
+    try {
+      const st = await P.getState();
+      if (st && st.state) btState = st.state;
+    } catch (e) {}
+
     /* 蓝牙开关检查（iOS 只能提示，不能代开） */
     try {
       const en = await P.isEnabled();
@@ -204,14 +211,15 @@ const BLE = (function () {
           return;
         }
         let info;
+        const stTag = '｜蓝牙状态=' + btState;
         if (!scanStarted && scanError) {
-          info = '（扫描未能启动：' + scanError + '）';
+          info = '（扫描未能启动：' + scanError + stTag + '）';
         } else if (!scanStarted) {
-          info = '（扫描未能启动，且无错误信息）';
+          info = '（扫描未能启动，且无错误信息' + stTag + '）';
         } else if (seen.length) {
-          info = '（扫描期间看到 ' + seen.length + ' 个设备：' + seen.filter(s => s).slice(0, 8).join('、') + (seen.length > 8 ? '…' : '') + '）';
+          info = '（扫描期间看到 ' + seen.length + ' 个设备：' + seen.filter(s => s).slice(0, 8).join('、') + (seen.length > 8 ? '…' : '') + stTag + '）';
         } else {
-          info = '（扫描已启动，但 25 秒内一个设备都没扫到——可能是权限被拒或魔方没广播）';
+          info = '（扫描已启动，但 25 秒内一个设备都没扫到' + stTag + '）';
         }
         cleanup().then(() => reject(new Error('SCAN_TIMEOUT|' + info)));
       }, 25000);
