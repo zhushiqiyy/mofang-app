@@ -1,5 +1,6 @@
 import Foundation
 import CoreBluetooth
+import CoreLocation
 
 class DeviceManager: NSObject, CBCentralManagerDelegate {
     typealias Callback = (_ success: Bool, _ message: String) -> Void
@@ -7,6 +8,7 @@ class DeviceManager: NSObject, CBCentralManagerDelegate {
     typealias ScanResultCallback = (_ device: Device, _ advertisementData: [String: Any], _ rssi: NSNumber) -> Void
 
     private var centralManager: CBCentralManager!
+    private var locationManager: CLLocationManager?
     private var viewController: UIViewController?
     private var displayStrings: [String: String]!
     private var callbackMap = [String: Callback]()
@@ -38,6 +40,10 @@ class DeviceManager: NSObject, CBCentralManagerDelegate {
         let initializeKey = "initialize"
         switch central.state {
         case .poweredOn:
+            /* iOS 17+ 所有 BLE 扫描都需要定位权限；主动请求授权（仅声明 Info.plist 不够） */
+            let lm = CLLocationManager()
+            self.locationManager = lm
+            lm.requestWhenInUseAuthorization()
             self.resolve(initializeKey, "BLE powered on")
             self.emitState(enabled: true)
         case .poweredOff:
