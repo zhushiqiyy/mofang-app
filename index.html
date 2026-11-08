@@ -3974,12 +3974,16 @@ const BLE = (function () {
     if (!P) throw new Error('NO_PLUGIN');
     await P.initialize();
 
-    /* 诊断：读取 centralManager 状态（排查扫描无结果的关键信息） */
+    /* 诊断 + 轮询：读取 centralManager 状态，等待 poweredOn（最多 15 秒） */
     let btState = '未知';
-    try {
-      const st = await P.getState();
-      if (st && st.state) btState = st.state;
-    } catch (e) {}
+    for (let i = 0; i < 30; i++) {
+      try {
+        const st = await P.getState();
+        if (st && st.state) btState = st.state;
+      } catch (e) {}
+      if (btState.indexOf('poweredOn') >= 0) break;
+      await new Promise(r => setTimeout(r, 500));
+    }
 
     /* 蓝牙开关检查（iOS 只能提示，不能代开） */
     try {

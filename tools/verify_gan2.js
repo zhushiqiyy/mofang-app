@@ -101,6 +101,7 @@ function makeMockNative(w, opts) {
   const P = {
     async initialize() {},
     async isEnabled() { return { value: true }; },
+    async getState() { return { state: 'poweredOn(已开启)' }; },
     async addListener(key, cb) { (listeners[key] = listeners[key] || []).push(cb); return { async remove() {} }; },
     async requestLEScan(scanOpts, callback) {
       setTimeout(() => {

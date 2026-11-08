@@ -28,7 +28,13 @@ class DeviceManager: NSObject, CBCentralManagerDelegate {
         self.viewController = viewController
         self.displayStrings = displayStrings
         self.callbackMap["initialize"] = callback
-        self.centralManager = CBCentralManager(delegate: self, queue: DispatchQueue.main)
+        /* CBCentralManager 必须在主线程创建，否则 centralManagerDidUpdateState 不回调、state 一直是 unknown */
+        let createCentral = { self.centralManager = CBCentralManager(delegate: self, queue: DispatchQueue.main) }
+        if Thread.isMainThread {
+            createCentral()
+        } else {
+            DispatchQueue.main.sync(execute: createCentral)
+        }
     }
 
     func setDisplayStrings(_ displayStrings: [String: String]) {
