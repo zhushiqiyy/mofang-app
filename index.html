@@ -4011,7 +4011,7 @@ const BLE = (function () {
 
       /* 第一轮：空数组全扫。实测（bt-adv 诊断）确认魔方广播【不带】服务 UUID，
          所以必须全量扫描才能发现它；空数组依赖补丁把 [] 转 nil 才能全扫。 */
-      P.requestLEScan({ services: [], allowDuplicates: true }, onResult)
+      P.requestLEScan({ services: [], allowDuplicates: false }, onResult)
         .then(() => { scanStarted = true; })
         .catch((e) => { scanError = (e && e.message) || String(e); });
 
@@ -4021,7 +4021,7 @@ const BLE = (function () {
         P.stopLEScan().catch(() => {}).then(() => {
           if (settled) return;
           if (onStatus) onStatus('rescan');
-          P.requestLEScan({ services: GAN_SERVICE_UUIDS, allowDuplicates: true }, onResult)
+          P.requestLEScan({ services: GAN_SERVICE_UUIDS, allowDuplicates: false }, onResult)
             .then(() => { scanStarted = true; })
             .catch((e) => { scanError = (e && e.message) || String(e); });
         });

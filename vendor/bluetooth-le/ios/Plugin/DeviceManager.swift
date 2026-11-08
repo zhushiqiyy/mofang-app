@@ -107,7 +107,7 @@ class DeviceManager: NSObject, CBCentralManagerDelegate {
             }
             self.centralManager.scanForPeripherals(
                 withServices: serviceUUIDs.isEmpty ? nil : serviceUUIDs,
-                options: [CBCentralManagerScanOptionAllowDuplicatesKey: allowDuplicates]
+                options: allowDuplicates ? [CBCentralManagerScanOptionAllowDuplicatesKey: true] : nil
             )
 
             if shouldShowDeviceList == false {
