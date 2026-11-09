@@ -91,55 +91,64 @@ function ganManufacturerHex(mac) {
 function makeMockNative(w, opts) {
   opts = opts || {};
   const listeners = {};
+  const SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dc4179';
+  const STATE_CHAR = '28be4cb6-cd67-11e9-a32f-2a2ae2dbcce4';
   const state = {
     deviceId: 'CUBE-1',
     name: 'GANic2dT',
-    notifyCallback: null,
     written: [],
-    cubeEnc: null
+    cubeEnc: null,
+    onDisconnect: null
   };
+  const bytesToHex = (u8) => Array.from(u8).map(b => b.toString(16).padStart(2, '0')).join(' ');
+  const hexToBytes = (hex) => new Uint8Array(String(hex || '').replace(/0x/gi, '').split(/[^0-9a-fA-F]/).filter(Boolean).map(h => parseInt(h, 16)));
+  const emitNotify = (u8) => (listeners['onNotify'] || []).forEach(cb => cb({
+    deviceId: state.deviceId, service: SERVICE, characteristic: STATE_CHAR, data: bytesToHex(u8)
+  }));
+
   const P = {
     async initialize() {},
-    async isEnabled() { return { value: true }; },
     async getState() { return { state: 'poweredOn(已开启)' }; },
-    async addListener(key, cb) { (listeners[key] = listeners[key] || []).push(cb); return { async remove() {} }; },
-    async requestLEScan(scanOpts, callback) {
+    async addListener(key, cb) {
+      (listeners[key] = listeners[key] || []).push(cb);
+      if (key === 'onDisconnect') state.onDisconnect = cb;
+      return { async remove() {} };
+    },
+    async scan() {
       setTimeout(() => {
-        const md = opts.noManufacturerData ? {} : { '1': ganManufacturerHex(CUBE_MAC) };
-        callback({
-          device: { deviceId: state.deviceId, name: state.name },
-          localName: state.name,
-          manufacturerData: md
-        });
+        (listeners['onScan'] || []).forEach(cb => cb({
+          deviceId: state.deviceId,
+          name: state.name,
+          rssi: -50,
+          mac: opts.noManufacturerData ? '' : CUBE_MAC,
+          manufacturerData: ganManufacturerHex(CUBE_MAC)
+        }));
       }, 40);
     },
-    async stopLEScan() {},
-    async connect(deviceId, onDisconnect) { state.onDisconnect = onDisconnect; },
-    async disconnect() {},
-    async getServices() {
-      return [{ uuid: '6e400001-b5a3-f393-e0a9-e50e24dc4179', characteristics: [
-        { uuid: '28be4a4a-cd67-11e9-a32f-2a2ae2dbcce4', properties: { write: true, writeWithoutResponse: true, notify: false } },
-        { uuid: '28be4cb6-cd67-11e9-a32f-2a2ae2dbcce4', properties: { notify: true, write: false } }
-      ] }];
+    async stopScan() {},
+    async connect(args) {},
+    async disconnect(args) {},
+    async discover(args) {
+      return { services: [{ uuid: SERVICE, characteristics: [
+        { uuid: '28be4a4a-cd67-11e9-a32f-2a2ae2dbcce4', properties: ['write', 'writeWithoutResponse'] },
+        { uuid: STATE_CHAR, properties: ['notify'] }
+      ] }] };
     },
-    async startNotifications(deviceId, service, characteristic, callback) { state.notifyCallback = callback; },
-    async writeWithoutResponse(deviceId, service, characteristic, dv) { await handleWrite(state, dv); },
-    async write(deviceId, service, characteristic, dv) { await handleWrite(state, dv); }
+    async subscribe(args) {},
+    async write(args) { await handleWrite(state, hexToBytes(args.data)); }
   };
-  async function handleWrite(state, dv) {
-    const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+  async function handleWrite(state, bytes) {
     state.written.push(bytes);
     if (!state.cubeEnc) state.cubeEnc = w.eval("ganMakeEncrypter('" + CUBE_MAC + "')");
     const plain = state.cubeEnc.decrypt(bytes);
     if (plain[0] === 0x04) {
-      /* 魔方回应面块状态（之后才上报转动） */
-      setTimeout(() => state.notifyCallback && state.notifyCallback(new DataView(state.cubeEnc.encrypt(gen2Facelets(0)).buffer)), 30);
-      setTimeout(() => state.notifyCallback && state.notifyCallback(new DataView(state.cubeEnc.encrypt(gen2Move(1, 1, 1, 640)).buffer)), 80);
-      setTimeout(() => state.notifyCallback && state.notifyCallback(new DataView(state.cubeEnc.encrypt(gen2Move(2, 2, 0, 700)).buffer)), 130);
-      setTimeout(() => state.notifyCallback && state.notifyCallback(new DataView(state.cubeEnc.encrypt(gen2Move(3, 0, 0, 660)).buffer)), 180);
+      setTimeout(() => emitNotify(state.cubeEnc.encrypt(gen2Facelets(0))), 30);
+      setTimeout(() => emitNotify(state.cubeEnc.encrypt(gen2Move(1, 1, 1, 640))), 80);
+      setTimeout(() => emitNotify(state.cubeEnc.encrypt(gen2Move(2, 2, 0, 700))), 130);
+      setTimeout(() => emitNotify(state.cubeEnc.encrypt(gen2Move(3, 0, 0, 660))), 180);
     }
   }
-  w.capacitorCommunityBluetoothLe = { BluetoothLe: P };
+  w.GanCubePlugin = P;
   w.Capacitor = { isNativePlatform: () => true, Plugins: {} };
   return state;
 }

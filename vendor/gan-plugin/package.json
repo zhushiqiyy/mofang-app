@@ -1,0 +1,25 @@
+{
+  "name": "gan-cube-plugin",
+  "version": "1.0.0",
+  "description": "Minimal Capacitor plugin for GAN smart cube BLE (CoreBluetooth scan/connect/MAC)",
+  "main": "index.js",
+  "license": "MIT",
+  "author": "mofang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhushiqiyy/mofang-app"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^6.0.0"
+  },
+  "files": [
+    "index.js",
+    "ios/Plugin/",
+    "GanCubePlugin.podspec"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

@@ -6,14 +6,13 @@
   "scripts": {
     "build": "node build.js",
     "build:ios": "node build.js && npx cap sync ios",
-    "verify": "node tools/verify_final.js",
-    "postinstall": "node scripts/patch-ble.js"
+    "verify": "node tools/verify_final.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@capacitor-community/bluetooth-le": "file:vendor/bluetooth-le",
+    "gan-cube-plugin": "file:vendor/gan-plugin",
     "@capacitor/cli": "^6.2.3",
     "@capacitor/core": "^6.2.3",
     "@capacitor/ios": "^6.2.3"

@@ -27,45 +27,6 @@ jobs:
       - name: 同步 Capacitor iOS 工程（含 pod install）
         run: npx cap sync ios
 
-      - name: 强制补丁蓝牙扫描（node_modules 与 Pods 都直接改写，确保编译产物带补丁）
-        run: |
-          node -e '
-            const fs = require("fs");
-            const { execSync } = require("child_process");
-            const BEFORE = "withServices: serviceUUIDs,";
-            const AFTER  = "withServices: serviceUUIDs.isEmpty ? nil : serviceUUIDs,";
-            function patchOne(f) {
-              let s = fs.readFileSync(f, "utf8");
-              if (s.indexOf(AFTER) < 0 && s.indexOf(BEFORE) >= 0) {
-                s = s.split(BEFORE).join(AFTER);
-                fs.writeFileSync(f, s);
-                console.log("  [已补丁] " + f);
-              } else if (s.indexOf(AFTER) >= 0) {
-                console.log("  [已补丁-跳过] " + f);
-              } else {
-                console.log("  [未找到目标行] " + f);
-              }
-            }
-            // 1) node_modules
-            console.log("=== node_modules ===");
-            patchOne("node_modules/@capacitor-community/bluetooth-le/ios/Plugin/DeviceManager.swift");
-            // 2) Pods（pod install 生成的编译源码，可能有多份）
-            console.log("=== Pods ===");
-            let files = [];
-            try { files = execSync("find ios/App/Pods -name DeviceManager.swift").toString().trim().split("\n").filter(Boolean); } catch(e){}
-            if (!files.length) { console.log("  （Pods 里无 DeviceManager.swift）"); }
-            else { for (const f of files) patchOne(f); }
-            // 3) 最终硬验证：所有编译源码都必须带补丁
-            console.log("=== 硬验证 ===");
-            const mustPatch = ["node_modules/@capacitor-community/bluetooth-le/ios/Plugin/DeviceManager.swift"].concat(files);
-            let bad = 0;
-            for (const f of mustPatch) {
-              if (fs.readFileSync(f, "utf8").indexOf(AFTER) < 0) { console.log("  ❌ 未补丁: " + f); bad++; }
-            }
-            if (bad) { console.log("补丁失败，终止构建"); process.exit(1); }
-            console.log("✅ 全部编译源码已带补丁");
-          '
-
       - name: 编译并打包未签名 IPA
         run: |
           cd ios/App

@@ -3850,10 +3850,10 @@ const BLE = (function () {
 
   /* ---------------- 平台探测 ---------------- */
   function capClient() {
-    /* 原生 App 里由 capacitor.js + bluetooth-le.js 提供 */
+    /* 原生 App 里由 capacitor.js + gan-cube.js 提供（极简自研插件） */
     try {
-      const w = window.capacitorCommunityBluetoothLe;
-      if (w && w.BluetoothLe) return w.BluetoothLe;
+      const w = window.GanCubePlugin;
+      if (w) return w;
     } catch (e) {}
     return null;
   }
@@ -3985,66 +3985,49 @@ const BLE = (function () {
       await new Promise(r => setTimeout(r, 500));
     }
 
-    /* 蓝牙开关检查（iOS 只能提示，不能代开） */
-    try {
-      const en = await P.isEnabled();
-      if (en && en.value === false) { const e = new Error('BLUETOOTH_OFF'); throw e; }
-    } catch (e) { if (e && e.message === 'BLUETOOTH_OFF') throw e; }
-
     return new Promise((resolve, reject) => {
       let settled = false;
-      let rescanTimer = null, timeoutTimer = null;
+      let timeoutTimer = null;
+      let scanHandle = null;
       const seen = [];
-      let fallback = null;   /* 名字为空但带厂商数据的候选（部分魔方不广播名字） */
-      let scanStarted = false;  /* 扫描是否真正启动（requestLEScan resolve / 收到回调） */
-      let scanError = null;     /* requestLEScan 若 reject，记录错误 */
+      let fallback = null;   /* 名字为空但带 MAC 的候选（部分魔方不广播名字） */
+      let scanStarted = false;
+      let scanError = null;
 
-      const cleanup = async () => {
-        if (rescanTimer) clearTimeout(rescanTimer);
+      const cleanup = () => {
         if (timeoutTimer) clearTimeout(timeoutTimer);
-        try { await P.stopLEScan(); } catch (e) {}
+        if (scanHandle) { try { scanHandle.remove(); } catch (e) {} scanHandle = null; }
+        try { P.stopScan(); } catch (e) {}
       };
 
       const onResult = (r) => {
         if (settled) return;
         scanStarted = true;   /* 收到任何扫描回调都说明底层扫描在工作 */
-        const name = (r.device && r.device.name) || r.localName || '';
+        const name = (r && r.name) || '';
+        const mac = (r && r.mac) || '';
         if (seen.indexOf(name) < 0) seen.push(name);
-        const hasMD = r.manufacturerData && Object.keys(r.manufacturerData).length > 0;
-        if (!name && hasMD && !fallback) {
-          fallback = { id: r.device.deviceId, name: name, mac: macFromManufacturerData(r.manufacturerData) };
+        if (!name && mac && !fallback) {
+          fallback = { id: r.deviceId, name: name, mac: mac };
         }
         if (!nameLooksLikeCube(name)) return;
-        const mac = macFromManufacturerData(r.manufacturerData);
         settled = true;
-        cleanup().then(() => resolve({ id: r.device.deviceId, name: name, mac: mac }));
+        cleanup();
+        resolve({ id: r.deviceId, name: name, mac: mac });
       };
 
-      /* 第一轮：空数组全扫。实测（bt-adv 诊断）确认魔方广播【不带】服务 UUID，
-         所以必须全量扫描才能发现它；空数组依赖补丁把 [] 转 nil 才能全扫。 */
-      P.requestLEScan({ services: [], allowDuplicates: false }, onResult)
-        .then(() => { scanStarted = true; })
-        .catch((e) => { scanError = (e && e.message) || String(e); });
+      /* 监听扫描结果事件（Swift 端 didDiscover 触发，已含提取好的 MAC） */
+      P.addListener('onScan', onResult).then(h => { scanHandle = h; }).catch(() => {});
 
-      /* 6 秒还没找到：按 GAN 服务 UUID 过滤兜底（覆盖那些广播带服务的魔方型号） */
-      rescanTimer = setTimeout(() => {
-        if (settled) return;
-        P.stopLEScan().catch(() => {}).then(() => {
-          if (settled) return;
-          if (onStatus) onStatus('rescan');
-          P.requestLEScan({ services: GAN_SERVICE_UUIDS, allowDuplicates: false }, onResult)
-            .then(() => { scanStarted = true; })
-            .catch((e) => { scanError = (e && e.message) || String(e); });
-        });
-      }, 6000);
+      /* nil 全量扫描：GAN 魔方广播不带服务 UUID，必须全扫（Swift 端已保证传 nil） */
+      P.scan().then(() => { scanStarted = true; }).catch((e) => { scanError = (e && e.message) || String(e); });
 
       /* 25 秒总超时 */
       timeoutTimer = setTimeout(() => {
         if (settled) return;
         settled = true;
-        /* 名字匹配不到，但有带厂商数据的无名设备 → 当作魔方兜底连接 */
         if (fallback) {
-          cleanup().then(() => resolve(fallback));
+          cleanup();
+          resolve(fallback);
           return;
         }
         let info;
@@ -4058,7 +4041,8 @@ const BLE = (function () {
         } else {
           info = '（扫描已启动，但 25 秒内一个设备都没扫到' + stTag + '）';
         }
-        cleanup().then(() => reject(new Error('SCAN_TIMEOUT|' + info)));
+        cleanup();
+        reject(new Error('SCAN_TIMEOUT|' + info));
       }, 25000);
     });
   }
@@ -4068,49 +4052,54 @@ const BLE = (function () {
     const P = capClient();
     if (!P) throw new Error('NO_PLUGIN');
 
-    await P.connect(handle.id, () => { if (onDisconnect) onDisconnect(); });
+    let notifyHandle = null, discHandle = null;
 
-    /* CoreBluetooth 连接后稍等，再强制发现服务 + 特性（getServices 可能只返回服务 UUID 而没有 characteristics） */
-    await new Promise(r => setTimeout(r, 500));
-    try { await P.discoverServices(handle.id); } catch (e) {}
-    await new Promise(r => setTimeout(r, 400));
+    /* 监听通知数据（Swift 端 didUpdateValue 触发，hex 字符串）与断线事件 */
+    try { notifyHandle = await P.addListener('onNotify', (ev) => {
+      if (onNotify && ev && ev.data) onNotify(hexToBytes(ev.data));
+    }); } catch (e) {}
+    try { discHandle = await P.addListener('onDisconnect', (ev) => {
+      if (onDisconnect) onDisconnect();
+    }); } catch (e) {}
+
+    /* 连接（等 didConnect 才 resolve） */
+    await P.connect({ id: handle.id });
+
+    /* 发现服务 + 特征值 */
     let services = [];
-    try { services = await P.getServices(handle.id) || []; } catch (e) {}
+    try { const r = await P.discover({ id: handle.id }); services = r.services || []; } catch (e) {}
 
     /* 先按已知 GAN 服务找；找不到就退而求其次：任一同时具备通知+写入特征的服务 */
+    const hasProp = (c, p) => (c.properties || []).indexOf(p) >= 0;
     let svc = services.find(s => GAN_SERVICE_UUIDS.indexOf((s.uuid || '').toLowerCase()) >= 0);
     if (!svc) {
       svc = services.find(s => {
         const cs = s.characteristics || [];
-        const hasNotify = cs.some(c => c.properties && (c.properties.notify || c.properties.indicate));
-        const hasWrite  = cs.some(c => c.properties && (c.properties.write || c.properties.writeWithoutResponse));
+        const hasNotify = cs.some(c => hasProp(c, 'notify') || hasProp(c, 'indicate'));
+        const hasWrite  = cs.some(c => hasProp(c, 'write') || hasProp(c, 'writeWithoutResponse'));
         return hasNotify && hasWrite;
       });
     }
     if (!svc) throw new Error('NO_GAN_SERVICE');
 
     const chars = svc.characteristics || [];
-    const notifyChar = chars.find(c => c.properties && (c.properties.notify || c.properties.indicate));
-    const writeChar  = chars.find(c => c.properties && (c.properties.write || c.properties.writeWithoutResponse));
+    const notifyChar = chars.find(c => hasProp(c, 'notify') || hasProp(c, 'indicate'));
+    const writeChar  = chars.find(c => hasProp(c, 'write') || hasProp(c, 'writeWithoutResponse'));
     if (!notifyChar || !writeChar) throw new Error('NO_CHARACTERISTICS');
 
-    await P.startNotifications(handle.id, svc.uuid, notifyChar.uuid, (dv) => {
-      if (onNotify && dv) onNotify(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength));
-    });
+    await P.subscribe({ id: handle.id, service: svc.uuid, characteristic: notifyChar.uuid });
 
-    const canWriteNoResp = !!(writeChar.properties && writeChar.properties.writeWithoutResponse);
     return {
       service: svc.uuid,
       writeChar: writeChar.uuid,
       notifyChar: notifyChar.uuid,
       write: async function (bytes) {
-        const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        if (canWriteNoResp) await P.writeWithoutResponse(handle.id, svc.uuid, writeChar.uuid, dv);
-        else await P.write(handle.id, svc.uuid, writeChar.uuid, dv);
+        await P.write({ id: handle.id, service: svc.uuid, characteristic: writeChar.uuid, data: bytesToHex(bytes) });
       },
       close: async function () {
-        try { await P.stopNotifications(handle.id, svc.uuid, notifyChar.uuid); } catch (e) {}
-        try { await P.disconnect(handle.id); } catch (e) {}
+        try { await P.disconnect({ id: handle.id }); } catch (e) {}
+        try { if (notifyHandle) notifyHandle.remove(); } catch (e) {}
+        try { if (discHandle) discHandle.remove(); } catch (e) {}
       }
     };
   }
@@ -4529,7 +4518,7 @@ function ganSetStatus(html) {
 function ganShowEnv(){
   const e = $('gan-env');
   if (!e) return;
-  const hasPlugin = !!(window.capacitorCommunityBluetoothLe && window.capacitorCommunityBluetoothLe.BluetoothLe);
+  const hasPlugin = !!window.GanCubePlugin;
   const isNat = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   e.textContent = '环境：蓝牙通道=' + BLE.kind() + ' · 插件=' + (hasPlugin ? '已加载' : '未加载') + ' · 原生=' + (isNat ? '是' : '否');
 }
