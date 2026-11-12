@@ -97,8 +97,14 @@ ok('手动输入 MAC 兜底', has('ganAskMac') && has('gan_mac_map'));
 console.log('== 10. iOS 原生工程（iPad 连魔方的唯一路径）==');
 const iosDir = path.join(__dirname, '..', 'ios', 'App');
 ok('iOS 工程存在', fs.existsSync(iosDir));
-ok('Podfile 含 GanCube 插件', fs.existsSync(path.join(iosDir, 'Podfile')) &&
-   fs.readFileSync(path.join(iosDir, 'Podfile'), 'utf8').includes('GanCubePlugin'));
+ok('GanCube 插件包含 capacitor.ios.src 配置（cap sync 据此注册到桥）', (() => {
+  try { const p = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'vendor', 'gan-plugin', 'package.json'), 'utf8'));
+    return !!(p.capacitor && p.capacitor.ios && p.capacitor.ios.src); } catch (e) { return false; }
+})());
+ok('根工程以 file: 依赖引入 GanCube 插件', (() => {
+  try { const p = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+    const d = p.dependencies && p.dependencies['gan-cube-plugin']; return typeof d === 'string' && d.startsWith('file:'); } catch (e) { return false; }
+})());
 const plist = fs.readFileSync(path.join(iosDir, 'App', 'Info.plist'), 'utf8');
 ok('Info.plist 含蓝牙权限说明', plist.includes('NSBluetoothAlwaysUsageDescription'));
 ok('Info.plist 支持横竖屏', plist.includes('UIInterfaceOrientationPortrait') && plist.includes('UIInterfaceOrientationLandscapeLeft') && plist.includes('UIInterfaceOrientationLandscapeRight'));

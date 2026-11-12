@@ -14,7 +14,12 @@
   },
   "files": [
     "index.js",
-    "ios/Plugin/",
+    "ios/",
     "GanCubePlugin.podspec"
-  ]
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
 }

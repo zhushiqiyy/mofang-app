@@ -4234,7 +4234,7 @@ const BLE = (function () {
     const lines = [];
     lines.push('平台：' + r.kind + (r.isNative ? '（原生 App）' : '（网页/浏览器）'));
     lines.push('Capacitor 运行时：' + (r.hasCapacitor ? '有' : '无'));
-    lines.push('window.GanCubePlugin：' + (r.windowGanCubePlugin ? '有' : '无'));
+    lines.push('JS 代理 window.GanCubePlugin：' + (r.windowGanCubePlugin ? '有（注意：仅 JS 端代理，不代表原生已注册）' : '无'));
     lines.push('Capacitor 已注册的插件：' + (Array.isArray(r.pluginHeaders) ? ('[' + r.pluginHeaders.join(', ') + ']') : r.pluginHeaders));
     lines.push('桥里是否含 "GanCube"：' + (r.ganInHeaders ? '✅ 有（插件已正确注册）' : '❌ 没有（根因：原生插件没被桥加载）'));
     lines.push('蓝牙状态：' + r.btState);
