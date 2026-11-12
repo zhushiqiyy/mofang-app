@@ -181,23 +181,34 @@ function ganBitWord(bits, start, len, littleEndian) {
 /* Gen2：无 magic，eventType = 前 4 位 */
 function ganGen2Parse(bits, st, out) {
   const eventType = ganBitWord(bits, 0, 4);
-  if (eventType === 0x02) {           /* MOVE：滑动窗口，最多 7 步 */
-    if (st.lastSerial !== -1) {
-      const serial = ganBitWord(bits, 4, 8);
-      const diff = Math.min((serial - st.lastSerial) & 0xFF, 7);
-      st.lastSerial = serial;
+  if (eventType === 0x02) {           /* MOVE：动作序号 + 本包若干步 */
+    const serial = ganBitWord(bits, 4, 8);
+    /* 关键修复：动作序号只由 MOVE 包维护。0x4 状态包绝不碰它——
+       否则其序号与 MOVE 计数列错位，会让下一包 diff 爆炸成多步垃圾动作（乱转）。 */
+    if (st.lastSerial === -1) st.lastSerial = (serial - 1) & 0xFF;   /* 建基线，首步即生效 */
+    const diff = (serial - st.lastSerial) & 0xFF;
+    st.lastSerial = serial;
+    /* 每包最多读 2 步并逐项校验，杜绝“大 diff 误放多步垃圾动作”导致的乱转 */
+    if (diff >= 1 && diff <= 2) {
       for (let i = diff - 1; i >= 0; i--) {
         const face = ganBitWord(bits, 12 + 5 * i, 4);
         const direction = ganBitWord(bits, 16 + 5 * i, 1);
+        if (face > 5 || direction > 2) continue;     /* 非法面/方向直接丢弃 */
         out.push({ type: 'MOVE', face: face, direction: direction });
       }
     }
-  } else if (eventType === 0x04) {    /* FACELETS：状态同步，之后才接受转动 */
-    st.lastSerial = ganBitWord(bits, 4, 8);
+    /* diff 为 0（无新步）或 >2（计数错位/历史缓冲）：只重同步，不放动作 */
+    st.seen = true;
+  } else if (eventType === 0x04) {    /* 状态/电量包：电量在固定字节（实测 dec[13] = 0~100） */
+    const lvl = parseInt(bits.substr(13 * 8, 8), 2);
+    if (lvl >= 0 && lvl <= 100) out.push({ type: 'BATTERY', level: lvl });
+    st.seen = true;
   } else if (eventType === 0x09) {    /* BATTERY */
     out.push({ type: 'BATTERY', level: Math.min(ganBitWord(bits, 8, 8), 100) });
+    st.seen = true;
   } else if (eventType === 0x0D) {    /* DISCONNECT */
     out.push({ type: 'DISCONNECT' });
+    st.seen = true;
   }
 }
 
@@ -422,7 +433,7 @@ async function pracConnectGAN() {
   ganGen = svc === BLE.GAN_GEN2_SERVICE ? 2
         : (svc === BLE.GAN_GEN3_SERVICE ? 3
         : (svc === BLE.GAN_GEN4_SERVICE ? 4 : 2));
-  ganParseState = { lastSerial: -1 };
+  ganParseState = { lastSerial: -1, seen: false };
   ganBattery = -1;
 
   /* 请求一次面块状态：GAN 协议必须先同步状态，之后才上报转动 */
@@ -434,7 +445,7 @@ async function pracConnectGAN() {
   /* 兜底：3 秒还没同步到状态就提示 */
   if (ganFaceletsTimer) clearTimeout(ganFaceletsTimer);
   ganFaceletsTimer = setTimeout(() => {
-    if (ganParseState.lastSerial === -1 && ganConn) {
+    if (!ganParseState.seen && ganConn) {
       ganSetStatus('⏳ 已连接，但魔方还没同步状态…拧一下魔方，或关掉 CubeStation 再连一次。');
     }
   }, 3000);
@@ -650,7 +661,7 @@ async function ganReconnect(handle) {
   ganGen = svc === BLE.GAN_GEN2_SERVICE ? 2
         : (svc === BLE.GAN_GEN3_SERVICE ? 3
         : (svc === BLE.GAN_GEN4_SERVICE ? 4 : 2));
-  ganParseState = { lastSerial: -1 };
+  ganParseState = { lastSerial: -1, seen: false };
   ganBattery = -1;
   try {
     const cmd = ganCommand(ganGen, 'REQUEST_FACELETS');
@@ -658,7 +669,7 @@ async function ganReconnect(handle) {
   } catch (e) {}
   if (ganFaceletsTimer) clearTimeout(ganFaceletsTimer);
   ganFaceletsTimer = setTimeout(() => {
-    if (ganParseState.lastSerial === -1 && ganConn) {
+    if (!ganParseState.seen && ganConn) {
       ganSetStatus('⏳ 已连接，但魔方还没同步状态…拧一下魔方，或关掉 CubeStation 再连一次。');
     }
   }, 3000);
