@@ -209,6 +209,9 @@ function ganGen2Parse(bits, st, out) {
   } else if (eventType === 0x0D) {    /* DISCONNECT */
     out.push({ type: 'DISCONNECT' });
     st.seen = true;
+  } else if (eventType === 0x01) {    /* 整体旋转（手腕整转）：陀螺仪/朝向包 */
+    out.push({ type: 'GYRO', bits: bits });
+    st.seen = true;
   }
 }
 
@@ -296,6 +299,37 @@ let ganFaceletsTimer = null;
 let ganLastHandle = null;           /* 记住上次连过的设备，用于前后台自动重连 */
 let ganBackgroundRelease = false;   /* 后台主动断开标记（避免误报"断开了"） */
 
+/* ---------------- 整体旋转（手腕整转）联动 ----------------
+   GAN 整魔方手腕旋转时发的是 eventType=0x1 的包（拧单面才是 0x2，见上方解析）。
+   下面把 0x1 包解成「整魔方在空间中转了多少度」，再喂给屏幕渲染（opt.cubeRot）。
+   字节布局各代略有差异，先用可调参数读，连上真机后用封包日志核对、微调即可。 */
+let ganGyroRef = null;             /* 基准朝向：首条 0x1 包作为 0°，使屏幕从「对齐」开始 */
+let ganGyroLogT = 0;               /* 监测采样节流时间戳 */
+/* 可调参数（真机封包日志核对后微调） */
+const GYRO_OFF   = [2, 4, 6];       /* 三个 int16 在解密包里的字节起点（小端） */
+const GYRO_SCALE = 0.06;            /* 每单位 ≈ 0.06°；真机微调 */
+const GYRO_AXES  = ['x', 'y', 'z']; /* 三个 int16 分别对应屏幕的哪根轴 */
+const GYRO_SIGN  = [1, 1, 1];       /* 必要时取 -1 翻转某根轴 */
+function ganReadGyroRaw(bits){
+  return GYRO_OFF.map(off => {
+    const lo = ganBitWord(bits, off*8, 8);
+    const hi = ganBitWord(bits, off*8 + 8, 8);
+    let v = (hi << 8) | lo;                 /* 小端 int16 */
+    if (v >= 0x8000) v -= 0x10000;
+    return v;
+  });
+}
+function ganDecodeGyro(bits){
+  const raw = ganReadGyroRaw(bits);
+  if (!ganGyroRef) ganGyroRef = raw.slice();   /* 首次采样当基准，屏幕与真魔方对齐 */
+  const rot = { x:0, y:0, z:0 };
+  for (let i=0;i<3;i++){
+    const d = (raw[i] - ganGyroRef[i]) * GYRO_SCALE * GYRO_SIGN[i];
+    rot[GYRO_AXES[i]] = d;
+  }
+  return { rot, raw };
+}
+
 /* ---------------- 实时封包记录（定位"整转误判成单面"用） ----------------
    真机连上后逐条记录魔方发来的原始数据，便于在 iPad 上直接看出：
    单面拧 → 出现哪种 type；整魔方手腕旋转 → 出现哪种 type（多半是朝向/陀螺仪信号）。 */
@@ -321,6 +355,9 @@ function ganLogAutoStart() { ganLogOn = true; ganLogRefreshBtn(); }
 function ganSetStatus(html) {
   const e = $('gan-status');
   if (e) e.innerHTML = html;
+  /* 公式跟练面板也在看连接状态，同步过去（面板存在时才写） */
+  const fp = $('m-follow-status');
+  if (fp) fp.innerHTML = html;
 }
 
 /* 环境诊断：显示当前蓝牙通道是否可用（排查「连不上」用） */
@@ -454,6 +491,8 @@ async function pracConnectGAN() {
                '现在拧真魔方，屏幕上的魔方会跟着转，并自动开始计时。');
   toast('已连接，拧一下试试');
   ganLogAutoStart();   /* 连上即自动记录封包，方便定位"整转误判成单面" */
+  ganGyroRef = null;   /* 整转联动：首条 0x1 包作为基准朝向，屏幕与真魔方对齐 */
+  if (typeof resetPracOrientation === 'function') resetPracOrientation();
 
   if (isSolved(pracCube) && currentPage === 'practice') pracScramble();
 }
@@ -486,6 +525,7 @@ function onGanPacket(bytes) {
       if (ev.type === 'BATTERY') return 'BATTERY ' + ev.level + '%';
       if (ev.type === 'DISCONNECT') return 'DISCONNECT';
       if (ev.type === 'FACELETS') return 'FACELETS';
+      if (ev.type === 'GYRO') return 'GYRO(整转)';
       return ev.type;
     }).join(' ');
   } else {
@@ -499,12 +539,30 @@ function onGanPacket(bytes) {
       if (faceIdx > 5) continue;
       const f = ganFaceMap[faceIdx] || GAN_FACE[faceIdx];
       /* 方向：0=顺时针 1=逆时针 2=180° */
-      pracDo(f + (ev.direction === 2 ? '2' : (ev.direction === 1 ? "'" : '')));
+      const label = f + (ev.direction === 2 ? '2' : (ev.direction === 1 ? "'" : ''));
+      if (formulaFollow && formulaFollow.active) formulaFollowMove(label);  /* 公式跟练：逐步检查 */
+      else pracDo(label);                                                  /* 否则驱动实战练习魔方 */
     } else if (ev.type === 'BATTERY') {
       if (ev.level !== ganBattery) {
         ganBattery = ev.level;
         if (ganBattery <= 20) toast('🔋 魔方电量低了（' + ganBattery + '%），该换电池啦');
       }
+    } else if (ev.type === 'GYRO') {
+      /* 整魔方手腕旋转：解成整体朝向，屏幕魔方跟着整体转 */
+      try {
+        const g = ganDecodeGyro(ev.bits);
+        applyPracCubeRot(g.rot);
+        ganLogPush(rawHex, decHex, 'GYRO → 屏幕整体旋转 x=' + g.rot.x.toFixed(1) +
+          '° y=' + g.rot.y.toFixed(1) + '° z=' + g.rot.z.toFixed(1) +
+          '° （raw=' + g.raw.join(',') + '）');
+        /* 监测：低频记录整体朝向，便于回看「整转」有没有正确联动（约每 1.5 秒一条） */
+        const now = Date.now();
+        if (now - (ganGyroLogT || 0) > 1500){
+          ganGyroLogT = now;
+          if (typeof recordTraining === 'function')
+            recordTraining({ kind:'sensor', rot:{ x:+g.rot.x.toFixed(1), y:+g.rot.y.toFixed(1), z:+g.rot.z.toFixed(1) } });
+        }
+      } catch (e) {}
     } else if (ev.type === 'DISCONNECT') {
       ganSetStatus('⚠️ 魔方主动断开了（可能关机了）。点「连接魔方」重新连一次。');
     }
@@ -637,7 +695,9 @@ function ganZero() {
   pracCube = solvedCube();
   pracMoves = 0;
   pracScrambleToks = [];
-  if (typeof drawCube === 'function' && $('prac-3d')) drawCube($('prac-3d'), pracCube, {});
+  if (typeof resetPracOrientation === 'function') resetPracOrientation();  /* 屏幕整体朝向也归零 */
+  ganGyroRef = null;                       /* 下一条 0x1 包重新作为基准，使屏幕与真魔方对齐 */
+  if (typeof drawPrac === 'function' && $('prac-3d')) drawPrac({});
   if (typeof refreshPracUI === 'function') refreshPracUI();
   toast('↺ 已归零：请把真魔方也拧回复原状态，二者就同步了');
 }
@@ -676,6 +736,8 @@ async function ganReconnect(handle) {
   ganSetStatus('✅ 已重新连接 <b>' + (handle.name || '魔方') + '</b>！拧真魔方试试。');
   toast('已重新连接');
   ganLogAutoStart();   /* 连上即自动记录封包 */
+  ganGyroRef = null;   /* 整转联动：重新以当前朝向为基准 */
+  if (typeof resetPracOrientation === 'function') resetPracOrientation();
   if (isSolved(pracCube) && currentPage === 'practice') pracScramble();
 }
 

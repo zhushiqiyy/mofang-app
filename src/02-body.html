@@ -241,6 +241,16 @@
   </div>
 
   <div class="card">
+    <h3>🤖 主动接替 · CFOP 还原思路</h3>
+    <div class="sub">不知道怎么拧回去？点「程序随机打乱并给思路」：先把魔方随机打乱，再把<b>还原思路</b>一步步拆给你看（十字→F2L→OLL→PLL），并自动识别当前顶层是哪一招 <b>OLL / PLL</b>。还能连 GAN 魔方，真魔方拧一步、屏幕跟一步并计时。</div>
+    <div class="row center" style="margin-top:10px;gap:8px;">
+      <button class="btn blue sm" onclick="pracScramble(); showCfopThink();">🤖 程序打乱并给思路</button>
+      <button class="btn alt sm" onclick="showCfopThink()">💡 只看思路</button>
+    </div>
+    <div id="cfop-think" class="card tight" style="display:none;margin-top:12px;"></div>
+  </div>
+
+  <div class="card">
     <h3>⚔️ 人机对战</h3>
     <div class="sub">你和电脑用<b>同一个打乱</b>，谁先复原谁赢。电脑按难度执行解法。</div>
     <div class="diffsel" id="diff-sel"></div>
@@ -344,6 +354,41 @@
   </div>
 </section>
 
+<!-- ============ 训练数据 / 云端 ============ -->
+<section class="page" id="page-data">
+  <h1>📈 训练数据</h1>
+  <p class="lead">这里记录你每次实战复原、公式跟练、打乱练习的成绩。可以<b>导出</b>给家长看，也能<b>上传到云端</b>长期保存。</p>
+
+  <div class="card">
+    <h3>📊 总览</h3>
+    <div id="data-summary" class="sub" style="line-height:1.9;"></div>
+  </div>
+
+  <div class="card">
+    <h3>☁️ 云端上传</h3>
+    <div class="sub" style="line-height:1.8;">把上传地址（服务器接收接口）填在下面。点「上传」会把训练数据以 JSON 发过去。没有服务器也能先<b>本地导出</b>。</div>
+    <input id="data-url" type="text" placeholder="https://你的服务器/upload  （没有可留空）"
+      style="width:100%;margin-top:10px;padding:10px;border-radius:10px;border:1px solid var(--line);font-size:15px;">
+    <div class="row center" style="margin-top:10px;gap:8px;">
+      <button class="btn alt sm" onclick="saveDataCloud()">💾 保存地址</button>
+      <button class="btn blue sm" onclick="uploadData()">☁️ 上传到云端</button>
+      <button class="btn alt sm" onclick="exportData()">⬇️ 导出 JSON</button>
+      <button class="btn ghost sm" onclick="clearTraining()">清空</button>
+    </div>
+    <div id="data-cloud-msg" class="sub" style="margin-top:8px;min-height:18px;"></div>
+  </div>
+
+  <div class="card">
+    <h3>📋 训练记录</h3>
+    <div id="data-list" class="log"></div>
+  </div>
+
+  <div class="card">
+    <h3>💡 训练意见</h3>
+    <div id="data-advice" class="sub" style="line-height:1.9;"></div>
+  </div>
+</section>
+
 <!-- ============ 皮肤小屋 ============ -->
 <section class="page" id="page-skin">
   <h1>🎨 皮肤小屋</h1>
@@ -388,6 +433,7 @@
   <button data-page="practice"><span class="ic">🎯</span>实战</button>
   <button data-page="gan"><span class="ic">🔵</span>魔方</button>
   <button data-page="skin"><span class="ic">🎨</span>皮肤</button>
+  <button data-page="data"><span class="ic">📈</span>数据</button>
   <button data-page="ach"><span class="ic">🏆</span>成就</button>
 </nav>
 

@@ -201,7 +201,7 @@ function makeQuestQuestion(lv){
     const p = target.pattern;
     const cnt = p[1] + p[3] + p[5] + p[7];
     const opts = shuffle([0,1,2,3,4].filter(n => n !== cnt)).slice(0,3);
-    return { type, stage, target, caseCube, feat:{ q:'顶面有几个<b>边块</b>是黄的？', ans:cnt, opts:shuffle([cnt].concat(opts)), unit:'个' } };
+    return { type, stage, target, caseCube, feat:{ q:'顶面有几个<b>边块</b>是白的？', ans:cnt, opts:shuffle([cnt].concat(opts)), unit:'个' } };
   }
   /* PLL：数车灯 */
   const r = target.ring;

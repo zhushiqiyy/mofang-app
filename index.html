@@ -194,6 +194,8 @@
   }
   .chunk.done{background:var(--green); color:#fff;}
   .chunk.now{border-color:var(--blue); background:#fff; box-shadow:0 0 0 3px rgba(58,122,254,.15);}
+  .chunk.ok{background:var(--green); color:#fff;}
+  .chunk.bad{background:var(--red); color:#fff; border-color:var(--red);}
 
   /* 讲解块 */
   .talk{display:flex; flex-direction:column; gap:10px; margin-top:12px;}
@@ -689,6 +691,16 @@
   </div>
 
   <div class="card">
+    <h3>🤖 主动接替 · CFOP 还原思路</h3>
+    <div class="sub">不知道怎么拧回去？点「程序随机打乱并给思路」：先把魔方随机打乱，再把<b>还原思路</b>一步步拆给你看（十字→F2L→OLL→PLL），并自动识别当前顶层是哪一招 <b>OLL / PLL</b>。还能连 GAN 魔方，真魔方拧一步、屏幕跟一步并计时。</div>
+    <div class="row center" style="margin-top:10px;gap:8px;">
+      <button class="btn blue sm" onclick="pracScramble(); showCfopThink();">🤖 程序打乱并给思路</button>
+      <button class="btn alt sm" onclick="showCfopThink()">💡 只看思路</button>
+    </div>
+    <div id="cfop-think" class="card tight" style="display:none;margin-top:12px;"></div>
+  </div>
+
+  <div class="card">
     <h3>⚔️ 人机对战</h3>
     <div class="sub">你和电脑用<b>同一个打乱</b>，谁先复原谁赢。电脑按难度执行解法。</div>
     <div class="diffsel" id="diff-sel"></div>
@@ -792,6 +804,41 @@
   </div>
 </section>
 
+<!-- ============ 训练数据 / 云端 ============ -->
+<section class="page" id="page-data">
+  <h1>📈 训练数据</h1>
+  <p class="lead">这里记录你每次实战复原、公式跟练、打乱练习的成绩。可以<b>导出</b>给家长看，也能<b>上传到云端</b>长期保存。</p>
+
+  <div class="card">
+    <h3>📊 总览</h3>
+    <div id="data-summary" class="sub" style="line-height:1.9;"></div>
+  </div>
+
+  <div class="card">
+    <h3>☁️ 云端上传</h3>
+    <div class="sub" style="line-height:1.8;">把上传地址（服务器接收接口）填在下面。点「上传」会把训练数据以 JSON 发过去。没有服务器也能先<b>本地导出</b>。</div>
+    <input id="data-url" type="text" placeholder="https://你的服务器/upload  （没有可留空）"
+      style="width:100%;margin-top:10px;padding:10px;border-radius:10px;border:1px solid var(--line);font-size:15px;">
+    <div class="row center" style="margin-top:10px;gap:8px;">
+      <button class="btn alt sm" onclick="saveDataCloud()">💾 保存地址</button>
+      <button class="btn blue sm" onclick="uploadData()">☁️ 上传到云端</button>
+      <button class="btn alt sm" onclick="exportData()">⬇️ 导出 JSON</button>
+      <button class="btn ghost sm" onclick="clearTraining()">清空</button>
+    </div>
+    <div id="data-cloud-msg" class="sub" style="margin-top:8px;min-height:18px;"></div>
+  </div>
+
+  <div class="card">
+    <h3>📋 训练记录</h3>
+    <div id="data-list" class="log"></div>
+  </div>
+
+  <div class="card">
+    <h3>💡 训练意见</h3>
+    <div id="data-advice" class="sub" style="line-height:1.9;"></div>
+  </div>
+</section>
+
 <!-- ============ 皮肤小屋 ============ -->
 <section class="page" id="page-skin">
   <h1>🎨 皮肤小屋</h1>
@@ -836,6 +883,7 @@
   <button data-page="practice"><span class="ic">🎯</span>实战</button>
   <button data-page="gan"><span class="ic">🔵</span>魔方</button>
   <button data-page="skin"><span class="ic">🎨</span>皮肤</button>
+  <button data-page="data"><span class="ic">📈</span>数据</button>
   <button data-page="ach"><span class="ic">🏆</span>成就</button>
 </nav>
 
@@ -908,6 +956,16 @@ function rot3(p, ax, deg){
   return [c*x - s*y, s*x + c*y, z];
 }
 
+/* 整体旋转（手腕整转）：把魔方当刚体绕 x/y/z 各轴转若干度。
+   仅作用于渲染（pracCube 的贴纸状态不变），用于「真魔方整转→屏幕整体跟着转」的联动。 */
+function rotEuler(p, rx, ry, rz){
+  let q = p;
+  if (rz) q = rot3(q, 'z', rz);
+  if (ry) q = rot3(q, 'y', ry);
+  if (rx) q = rot3(q, 'x', rx);
+  return q;
+}
+
 const MOVEDEF = {
   U:{axis:'z',vals:[1],ang:-90},   D:{axis:'z',vals:[-1],ang:90},
   R:{axis:'x',vals:[1],ang:-90},   L:{axis:'x',vals:[-1],ang:90},
@@ -973,9 +1031,12 @@ function applyAlg(cube, toks){
   for (const t of toks){ c = applyMove(c, moveOf(t)); if (!c) return null; }
   return c;
 }
+const UP_COLOR = 'w';   /* 顶面色（白）。与校准文字/色板一致：U 上白、D 下黄。
+                           OLL/PLL 的"顶面识别"一律按 UP_COLOR 判断，不再写死 'y'，
+                           这样无论顶色是白还是黄，图案识别都不会全灰。 */
 function solvedCube(){
   const f = c => new Array(9).fill(c);
-  return { U:f('y'), R:f('r'), F:f('g'), D:f('w'), L:f('o'), B:f('b') };
+  return { U:f(UP_COLOR), R:f('r'), F:f('g'), D:f('y'), L:f('o'), B:f('b') };
 }
 function invert(toks){
   return toks.slice().reverse().map(t => ({ f:t.f, prime:!t.prime, dbl:t.dbl }));
@@ -1185,6 +1246,10 @@ function drawCube(el, cube, opt){
   const hlPos = hlList.map(h => h.pos.join(','));
   const dimSet = opt.dimFaces || null;
 
+  /* 整体旋转（真魔方手腕整转联动）：把整魔方当刚体转。仅改渲染，不改贴纸状态。 */
+  const R = opt.cubeRot;
+  const rot = (p) => R ? rotEuler(p, R.x || 0, R.y || 0, R.z || 0) : p;
+
   /* 全部先藏起来，再按可见性打开（避免上一帧的残留） */
   for (let i=0;i<cv.polys.length;i++) cv.polys[i].style.display = 'none';
 
@@ -1204,6 +1269,8 @@ function drawCube(el, cube, opt){
         corners = corners.map(p => rot3(p, mv.axis, angled));
         normal  = rot3(st.n, mv.axis, angled);
       }
+      corners = corners.map(rot);          /* 叠加整体旋转（手腕整转联动） */
+      normal  = rot(normal);
       const nv = toView(normal, yaw, pitch);
       if (nv[1] <= 0.002) continue;                 /* 背向镜头 → 不画 */
       const pts = corners.map(p => {
@@ -1214,7 +1281,7 @@ function drawCube(el, cube, opt){
     }
     if (!items.length) continue;
 
-    const depth = toView(g.pos, yaw, pitch)[1];
+    const depth = toView(rot(g.pos), yaw, pitch)[1];
     groups.push({ items, depth, key, hlIdx: hlPos.indexOf(key) });
   }
 
@@ -1228,13 +1295,14 @@ function drawCube(el, cube, opt){
   const fxDef = CUBE_EFFECTS[CUBE_FX] || null;
   for (const f in FACES){
     const o = FACES[f];
-    const nv = toView(o.n, yaw, pitch);
+    const C2 = rot(o.C), u2 = rot(o.u), v2 = rot(o.v), n2 = rot(o.n);
+    const nv = toView(n2, yaw, pitch);
     if (nv[1] <= 0.001) continue;
     const quad = [[1,1],[-1,1],[-1,-1],[1,-1]].map(([a,b]) => {
       const p3 = [
-        o.C[0]*SURF + o.u[0]*1.53*a + o.v[0]*1.53*b,
-        o.C[1]*SURF + o.u[1]*1.53*a + o.v[1]*1.53*b,
-        o.C[2]*SURF + o.u[2]*1.53*a + o.v[2]*1.53*b
+        C2[0]*SURF + u2[0]*1.53*a + v2[0]*1.53*b,
+        C2[1]*SURF + u2[1]*1.53*a + v2[1]*1.53*b,
+        C2[2]*SURF + u2[2]*1.53*a + v2[2]*1.53*b
       ];
       const v = toView(p3, yaw, pitch);
       return (cx + v[0]*S).toFixed(2) + ',' + (cy - v[2]*S).toFixed(2);
@@ -1293,7 +1361,7 @@ function drawCube(el, cube, opt){
       const col = h.color || PALETTE[idx % PALETTE.length];
       const [ hx, hy, hz ] = h.pos;
       /* 标签圆点放在该块中心投影处（乘 1.55 贴到表面外） */
-      const v = toView([hx*1.55, hy*1.55, hz*1.55], yaw, pitch);
+      const v = toView(rot([hx*1.55, hy*1.55, hz*1.55]), yaw, pitch);
       const px = cx + v[0]*S, py = cy - v[2]*S;
 
       /* ring：在格子外面套一圈（深色描边+白环），任何贴纸颜色上都看得清 */
@@ -1333,7 +1401,7 @@ function drawCube(el, cube, opt){
   /* 中心点小标记，帮孩子确认"中心永远不动" */
   if (opt.showCenters){
     for (const f of ['U','F','R']){
-      const v = toView([FACES[f].n[0]*1.55, FACES[f].n[1]*1.55, FACES[f].n[2]*1.55], yaw, pitch);
+      const v = toView(rot([FACES[f].n[0]*1.55, FACES[f].n[1]*1.55, FACES[f].n[2]*1.55]), yaw, pitch);
       if (v[1] <= 0) continue;
       const t = document.createElementNS(SVGNS, 'text');
       t.setAttribute('x', cx + v[0]*S); t.setAttribute('y', cy - v[2]*S + 4);
@@ -1616,7 +1684,7 @@ function buildChart(host, src, opt){
   for (let i=0;i<9;i++){
     const col = ring.U[i];
     if (opt.mode === 'oll'){
-      uFace.appendChild(mkPure(col === 'y' ? COLORS.y : '#d9e0ee'));
+      uFace.appendChild(mkPure(col === UP_COLOR ? COLORS[UP_COLOR] : '#d9e0ee'));
     } else {
       uFace.appendChild(mk(COLORS[col]));
     }
@@ -1654,7 +1722,7 @@ function buildChart(host, src, opt){
   if (opt.mode === 'oll'){
     const lab = document.createElement('div');
     lab.className = 'chart-label';
-    lab.textContent = '黄色 = 顶面已经翻上来的块 · 灰色 = 还没翻上来';
+    lab.textContent = '白色 = 顶面已经翻上来的块 · 灰色 = 还没翻上来';
     host.appendChild(lab);
   }
   return chart;
@@ -1674,7 +1742,7 @@ function ollThumb(pattern, cell){
   g.style.cssText = 'display:grid;grid-template-columns:repeat(3,'+cell+'px);gap:2px;margin:4px auto 2px;width:max-content;';
   pattern.forEach(v => {
     const d = document.createElement('div');
-    d.style.cssText = 'width:'+cell+'px;height:'+cell+'px;border-radius:2px;background:'+(v ? COLORS.y : '#d9e0ee')+';';
+    d.style.cssText = 'width:'+cell+'px;height:'+cell+'px;border-radius:2px;background:'+(v ? COLORS[UP_COLOR] : '#d9e0ee')+';';
     g.appendChild(d);
   });
   return g;
@@ -2064,6 +2132,8 @@ function loadStore(){
   delete s.points;                    /* 旧版商城的积分不再需要 */
   s.notes = s.notes || { streak:0, best:0 };
   s.imagine = s.imagine || { count:0 };
+  s.training = s.training || [];     /* 训练数据：实战复原 / 公式跟练 / 打乱练习等 */
+  s.cloud = s.cloud || { url:'', auto:false };  /* 云端上传配置（endpoint 由用户填） */
   return s;
 }
 function saveStore(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch(e){} }
@@ -2097,6 +2167,14 @@ function pushLog(txt){
   if (store.log.length > 60) store.log.length = 60;
   saveStore();
 }
+/* 记录一条训练数据（实战复原 / 公式跟练 / 打乱练习……）。供本地查看、导出、云端上传。 */
+function recordTraining(ev){
+  store.training = store.training || [];
+  ev.t = Date.now();
+  store.training.push(ev);
+  if (store.training.length > 500) store.training.shift();
+  saveStore();
+}
 function starTotal(){
   let n = 0;
   for (const k in store.quest){ n += (store.quest[k].stars || 0); }
@@ -2104,11 +2182,12 @@ function starTotal(){
 }
 
 /* ---------------- 路由 ---------------- */
-const TAB_PAGES = ['home','map','quest','lib','practice','gan','skin','ach'];
+const TAB_PAGES = ['home','map','quest','lib','practice','gan','skin','data','ach'];
 const PAGE_TITLE = {
   home:'魔方小将', map:'学习地图', sense:'色块感知训练', notes:'记号训练营',
   lib:'119 招公式库', quest:'闯关之路', relate:'关联练习',
-  practice:'实战练习', ach:'成就墙', gan:'GAN356i', install:'安装到 iPad', skin:'皮肤小屋'
+  practice:'实战练习', ach:'成就墙', gan:'GAN356i', install:'安装到 iPad', skin:'皮肤小屋',
+  data:'训练数据'
 };
 let currentPage = 'home';
 
@@ -2142,6 +2221,7 @@ function renderPage(p){
   if (p === 'skin')     renderSkinRoom();
   if (p === 'sense')    renderSenseEntry();
   if (p === 'gan')      ganShowEnv();
+  if (p === 'data')     renderData();
 }
 
 $('tabbar').addEventListener('click', e => {
@@ -2441,6 +2521,7 @@ let mState = null;
 
 function closeModal(){
   if (mState && mState.anim) mState.anim.cancel();
+  if (formulaFollow) formulaFollow.active = false;   /* 关弹窗即退出跟练，避免后台误驱动 */
   mState = null;
   $('modal').classList.remove('show');
 }
@@ -2553,7 +2634,21 @@ function openFormula(stage, num){
       <button class="btn green" id="m-done">⭐ 我会了</button>
       <button class="btn alt" id="m-quiz">🎯 考考我</button>
       <button class="btn alt" id="m-related">🔗 看同族</button>
+      <button class="btn blue" id="m-follow">🔗 连真魔方跟练</button>
     </div>
+
+    <div class="card tight" id="m-follow-panel" style="display:none;margin-top:14px;background:#f0f7ff;border:1.5px solid #bcd8ff;">
+      <div class="ptitle" style="color:var(--blue);font-weight:900;font-size:14px;margin-bottom:6px;">🎮 真魔方跟练（蓝牙）</div>
+      <div id="m-follow-status" class="sub" style="font-size:12.5px;min-height:18px;">点「开始跟练」连上真魔方。</div>
+      <div class="sub" style="font-size:12.5px;margin-top:6px;">先把真魔方拧成<b>上面这张图</b>的样子（对照 3D 轴测图），再照下面的公式一步步拧，屏幕会<b>实时检查</b>每一步。</div>
+      <div class="chunks" id="m-follow-steps" style="margin-top:8px;"></div>
+      <div id="m-follow-fb" class="sub" style="font-size:13px;margin-top:8px;font-weight:700;"></div>
+      <div class="row center" style="margin-top:10px;gap:8px;">
+        <button class="btn blue sm" id="m-follow-toggle">开始跟练</button>
+        <button class="btn alt sm" id="m-follow-reset">↺ 重来</button>
+      </div>
+    </div>
+
     <div class="row center" style="margin-top:10px;">
       <button class="btn ghost sm" id="m-prev">◀ 上一式</button>
       <button class="btn ghost sm" id="m-next">下一式 ▶</button>
@@ -2582,11 +2677,11 @@ function openFormula(stage, num){
     g.style.cssText = 'display:grid;grid-template-columns:repeat(3,42px);gap:4px;justify-content:center;margin:6px auto;';
     it.pattern.forEach(v => {
       const d = el('div');
-      d.style.cssText = 'width:42px;height:42px;border-radius:8px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1);background:' + (v ? COLORS.y : '#d9e0ee') + ';';
+      d.style.cssText = 'width:42px;height:42px;border-radius:8px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1);background:' + (v ? COLORS[UP_COLOR] : '#d9e0ee') + ';';
       g.appendChild(d);
     });
     ch.appendChild(g);
-    const lab = el('div','chart-label','黄色的地方 = 顶面已经翻上来（这是从正上方往下看的样子）');
+    const lab = el('div','chart-label','白色的地方 = 顶面已经翻上来（这是从正上方往下看的样子）');
     ch.appendChild(lab);
   } else {
     /* F2L：展示角块+棱块的位置关系 */
@@ -2645,11 +2740,100 @@ function openFormula(stage, num){
   $('m-quiz').onclick = () => { closeModal(); go('relate'); };
   $('m-related').onclick = () => { closeModal(); go('relate'); };
 
+  /* 真魔方跟练（蓝牙）按钮 */
+  $('m-follow').onclick = () => {
+    const p = $('m-follow-panel');
+    if (p) p.style.display = (p.style.display === 'none' ? 'block' : 'none');
+  };
+  $('m-follow-toggle').onclick = () => toggleFormulaFollow();
+  $('m-follow-reset').onclick = () => resetFormulaFollow();
+
   const idx = arr.findIndex(x => x.num === num);
   $('m-prev').disabled = idx <= 0;
   $('m-next').disabled = idx >= arr.length - 1;
   $('m-prev').onclick = () => openFormula(stage, arr[idx-1].num);
   $('m-next').onclick = () => openFormula(stage, arr[idx+1].num);
+}
+
+/* ---------------- 真魔方跟练（蓝牙，逐步检查 + 训练意见） ---------------- */
+let formulaFollow = null;   /* { stage, it, toks, caseCube, stack, cube, active, started } */
+
+function mFollowTokEq(a, b){ return a.f === b.f && !!a.prime === !!b.prime && !!a.dbl === !!b.dbl; }
+function mFollowInv(t){ return t.dbl ? { f:t.f, prime:t.prime, dbl:true } : { f:t.f, prime:!t.prime, dbl:false }; }
+function mFollowFmt(t){ return t.f + (t.prime ? "'" : '') + (t.dbl ? '2' : ''); }
+
+function startFormulaFollow(){
+  if (!mState) return;
+  formulaFollow = {
+    stage: mState.stage, it: mState.it, toks: mState.toks.slice(),
+    caseCube: mState.caseCube, stack: [], cube: mState.caseCube, active: true, started: true
+  };
+  renderFollowSteps();
+  setFollowFb('准备就绪，先照着图把真魔方拧成那个样子，再拧第一步！', '#1a7fd2');
+  const tg = $('m-follow-toggle'); if (tg) tg.textContent = '⏸ 暂停跟练';
+  if (!ganConn) pracConnectGAN();
+  else followSetStatus('✅ 已连上真魔方，直接拧吧');
+}
+
+function toggleFormulaFollow(){
+  if (!formulaFollow || !formulaFollow.started){ startFormulaFollow(); return; }
+  formulaFollow.active = !formulaFollow.active;
+  const tg = $('m-follow-toggle');
+  if (tg) tg.textContent = formulaFollow.active ? '⏸ 暂停跟练' : '继续跟练';
+  setFollowFb(formulaFollow.active ? '继续吧！' : '已暂停，再点继续。', '#1a7fd2');
+}
+
+function resetFormulaFollow(){
+  if (!formulaFollow) return;
+  formulaFollow.stack = [];
+  formulaFollow.cube = formulaFollow.caseCube;
+  drawCube($('m-3d'), formulaFollow.cube, {});
+  renderFollowSteps();
+  setFollowFb('已重来，从第一步开始。', '#1a7fd2');
+}
+
+function renderFollowSteps(){
+  const host = $('m-follow-steps');
+  if (!host || !formulaFollow) return;
+  host.innerHTML = '';
+  const t = formulaFollow.toks, st = formulaFollow.stack;
+  t.forEach((tk, i) => {
+    const b = el('button', 'chunk', mFollowFmt(tk));
+    if (i < st.length) b.classList.add(mFollowTokEq(st[i], tk) ? 'ok' : 'bad');
+    else if (i === st.length) b.classList.add('now');
+    host.appendChild(b);
+  });
+}
+
+function setFollowFb(txt, color){ const e = $('m-follow-fb'); if (e){ e.textContent = txt; if (color) e.style.color = color; } }
+function followSetStatus(html){ const e = $('m-follow-status'); if (e) e.innerHTML = html; }
+
+/* 真魔方每转一步都会调到这里：镜像到屏幕 + 逐步检查 + 给训练意见 */
+function formulaFollowMove(label){
+  if (!formulaFollow || !formulaFollow.active) return;
+  const tok = { f: label[0], prime: label.indexOf("'") > 0, dbl: label.indexOf('2') > 0 };
+  const st = formulaFollow.stack;
+  if (st.length && mFollowTokEq(st[st.length-1], mFollowInv(tok))) st.pop();   /* 拧反了＝撤销上一步 */
+  else st.push(tok);
+
+  let cube = formulaFollow.caseCube;
+  st.forEach(t => { cube = applyMove(cube, moveOf(t)) || cube; });
+  formulaFollow.cube = cube;
+  drawCube($('m-3d'), cube, {});
+  renderFollowSteps();
+
+  const t = formulaFollow.toks;
+  let wrong = -1;
+  for (let i = 0; i < st.length; i++){ if (!mFollowTokEq(st[i], t[i])){ wrong = i; break; } }
+  if (wrong >= 0){
+    setFollowFb('❌ 第' + (wrong+1) + '步拧成了 ' + mFollowFmt(st[wrong]) + '，应该是 ' + mFollowFmt(t[wrong]) + '（方向或顺序不对，照图上箭头拧回去重来就可以）', '#d23b3b');
+  } else if (st.length >= t.length){
+    setFollowFb('🎉 这一招跟练完成！整条公式都对上了，真棒！', '#1a9e4b');
+    if (typeof recordTraining === 'function')
+      recordTraining({ kind:'formula', stage: formulaFollow.stage, num: formulaFollow.it.num, ok:true, moves: st.length });
+  } else {
+    setFollowFb('✅ 已对 ' + st.length + ' / ' + t.length + ' 步，下一步：' + mFollowFmt(t[st.length]), '#1a7fd2');
+  }
 }
 
 function splitChunks(raw){
@@ -2916,12 +3100,119 @@ function renderAch(){
 function resetAll(){
   if (!confirm('确定要清空所有星星和闯关记录吗？')) return;
   store = { learned:{}, log:[], quest:{}, battle:{w:0,l:0,d:0}, sense:{}, streak:0, lastDay:null,
-            skins:{ cube:'classic', comp:'classic' }, notes:{ streak:0, best:0 }, imagine:{ count:0 } };
+            skins:{ cube:'classic', comp:'classic' }, notes:{ streak:0, best:0 }, imagine:{ count:0 }, training:[], cloud:{ url:'', auto:false } };
   saveStore();
   refreshTopStars();
   renderHome();
   renderAch();
   toast('已清空');
+}
+
+/* ---------------- 训练数据 / 云端上传 ---------------- */
+function fmtDateTime(t){
+  const d = new Date(t);
+  const p = n => String(n).padStart(2,'0');
+  return (d.getMonth()+1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function kindName(k){
+  return { practice:'实战复原', formula:'公式跟练', battle:'人机对战', scramble:'打乱练习', sensor:'整体朝向' }[k] || k;
+}
+function renderData(){
+  store.training = store.training || [];
+  /* 总览 */
+  const t = store.training;
+  const cnt = {};
+  t.forEach(e => { cnt[e.kind] = (cnt[e.kind]||0) + 1; });
+  const prac = t.filter(e => e.kind === 'practice');
+  const avg = prac.length ? (prac.reduce((s,e)=>s+(e.secs||0),0)/prac.length) : 0;
+  const best = prac.length ? Math.min.apply(null, prac.map(e=>e.secs)) : 0;
+  $('data-summary').innerHTML =
+    '共记录 <b>' + t.length + '</b> 条训练<br>' +
+    '实战复原 <b>' + (cnt.practice||0) + '</b> 次 · 平均 <b>' + avg.toFixed(1) + '</b> 秒 · 最快 <b>' + best.toFixed(1) + '</b> 秒<br>' +
+    '公式跟练 <b>' + (cnt.formula||0) + '</b> 次 · 打乱练习 <b>' + (cnt.scramble||0) + '</b> 次 · 对战 <b>' + (cnt.battle||0) + '</b> 次';
+
+  /* 云端地址回填 */
+  const urlIn = $('data-url');
+  if (urlIn && store.cloud) urlIn.value = store.cloud.url || '';
+
+  /* 记录列表 */
+  const list = $('data-list');
+  list.innerHTML = '';
+  if (!t.length){ list.innerHTML = '<div>还没有训练记录，去实战或公式跟练试试。</div>'; }
+  t.slice().reverse().slice(0, 40).forEach(e => {
+    const d = el('div');
+    let detail = '';
+    if (e.kind === 'practice') detail = e.secs + ' 秒 / ' + e.moves + ' 步';
+    else if (e.kind === 'formula') detail = (e.stage||'') + ' 第' + e.num + '式 · ' + (e.ok ? '完成✅' : '未完成') ;
+    else if (e.kind === 'battle') detail = (e.win ? '胜' : '负') + ' · ' + (e.secs?e.secs+'秒/':'') + e.moves + '步 · 对手' + (e.opp||'');
+    else if (e.kind === 'scramble') detail = (e.moves||'') + ' 步打乱 · ' + (e.by||'');
+    else if (e.kind === 'sensor') detail = 'x' + (e.rot.x) + '° y' + (e.rot.y) + '° z' + (e.rot.z) + '°';
+    d.innerHTML = `<span>${kindName(e.kind)}：${detail}</span><span class="sub">${fmtDateTime(e.t)}</span>`;
+    list.appendChild(d);
+  });
+
+  /* 训练意见 */
+  const adv = $('data-advice');
+  const tips = [];
+  if (!t.length) tips.push('还没有数据，多练几次实战复原，我就能给你针对性建议啦。');
+  else {
+    if (prac.length >= 2){
+      if (best <= 15) tips.push('🚀 你已经能进 15 秒以内，F2L 的手感很稳，可以挑战更短的 OLL/PLL 公式。');
+      else if (best <= 30) tips.push('👍 最快 ' + best.toFixed(1) + ' 秒，基础不错！想再快就练「两步 OLL（9 招）」和「两步 PLL（6 招）」，把顶层压缩到两步。');
+      else tips.push('💪 最快 ' + best.toFixed(1) + ' 秒，先把层先法练熟，再慢慢引入 F2L，别急着背全部 119 招。');
+    }
+    const fm = t.filter(e => e.kind === 'formula');
+    if (fm.length) tips.push('你已经跟练过 ' + fm.length + ' 次公式，继续保持，把每招都练到「不用想就能拧」就成肌肉记忆了。');
+    if (cnt.scramble) tips.push('打乱练习做了 ' + cnt.scramble + ' 次，手感在积累，很好。');
+  }
+  adv.innerHTML = tips.map(x => '· ' + x).join('<br>');
+}
+
+function saveDataCloud(){
+  store.cloud = store.cloud || {};
+  const v = ($('data-url').value || '').trim();
+  store.cloud.url = v;
+  saveStore();
+  $('data-cloud-msg').textContent = v ? '✅ 已保存上传地址。' : '已清空上传地址（只本地保存）。';
+}
+function uploadData(){
+  const url = (store.cloud && store.cloud.url) || ($('data-url').value||'').trim();
+  if (!url){ $('data-cloud-msg').textContent = '⚠️ 还没填上传地址。没有服务器也能「导出 JSON」先保存。'; return; }
+  $('data-cloud-msg').textContent = '☁️ 正在上传…';
+  const payload = { app:'cfop-kids', exportedAt: Date.now(), data: store.training };
+  fetch(url, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+  }).then(r => {
+    $('data-cloud-msg').textContent = r.ok ? '✅ 上传成功！' : ('⚠️ 服务器返回 ' + r.status + '，请检查接口。');
+  }).catch(e => {
+    $('data-cloud-msg').textContent = '⚠️ 上传失败：' + (e && e.message || e) + '（离线或地址不对？可改用导出 JSON）';
+  });
+}
+function exportData(){
+  const payload = { app:'cfop-kids', exportedAt: Date.now(), store: { training: store.training, learned: store.learned, battle: store.battle } };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '魔方训练数据-' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(a.href);
+  toast('已导出 JSON');
+}
+function clearTraining(){
+  if (!window.__clearArmed){
+    window.__clearArmed = true;
+    const b = document.querySelector('[onclick="clearTraining()"]');
+    if (b) b.textContent = '⚠️ 再点一次确认清空';
+    setTimeout(() => { window.__clearArmed = false; if (b) b.textContent = '清空'; }, 3000);
+    return;
+  }
+  window.__clearArmed = false;
+  store.training = [];
+  saveStore();
+  renderData();
+  toast('已清空训练记录');
+  const b = document.querySelector('[onclick="clearTraining()"]');
+  if (b) b.textContent = '清空';
 }
 
 /* ==== src/30-sense.js ==== */
@@ -3385,7 +3676,7 @@ function makeQuestQuestion(lv){
     const p = target.pattern;
     const cnt = p[1] + p[3] + p[5] + p[7];
     const opts = shuffle([0,1,2,3,4].filter(n => n !== cnt)).slice(0,3);
-    return { type, stage, target, caseCube, feat:{ q:'顶面有几个<b>边块</b>是黄的？', ans:cnt, opts:shuffle([cnt].concat(opts)), unit:'个' } };
+    return { type, stage, target, caseCube, feat:{ q:'顶面有几个<b>边块</b>是白的？', ans:cnt, opts:shuffle([cnt].concat(opts)), unit:'个' } };
   }
   /* PLL：数车灯 */
   const r = target.ring;
@@ -3551,6 +3842,25 @@ let pracTimer = null;
 let pracBusy = false;
 const pracQueue = [];
 
+/* 真魔方整体朝向（手腕整转），由 GAN 陀螺仪 0x1 包更新；渲染时叠加到魔方上。
+   仅改渲染，不改 pracCube 贴纸状态——整转不改变魔方各块相对位置，只改变整魔方在空间中的朝向。 */
+let pracCubeRot = { x:0, y:0, z:0 };
+let pracRotDirty = false;
+function drawPrac(opt){
+  drawCube($('prac-3d'), pracCube, Object.assign({ cubeRot: pracCubeRot }, opt || {}));
+}
+function resetPracOrientation(){ pracCubeRot = { x:0, y:0, z:0 }; }
+/* GAN 角度更新后，用 rAF 合帧重绘，避免高频陀螺仪包抖得满屏重画 */
+function applyPracCubeRot(rot){
+  pracCubeRot = rot;
+  if (pracRotDirty) return;
+  pracRotDirty = true;
+  requestAnimationFrame(() => {
+    pracRotDirty = false;
+    if ($('prac-3d')) drawPrac();
+  });
+}
+
 const DIFFS = [
   { key:'easy', name:'新手', em:'🐣', ms:46000, steps:60, tip:'慢悠悠，刚学会也能赢' },
   { key:'mid',  name:'高手', em:'🐯', ms:27000, steps:56, tip:'要认真拧才追得上' },
@@ -3564,7 +3874,7 @@ let pracInited = false;
 
 function renderPractice(){
   const cv = cubeView($('prac-3d'));
-  drawCube($('prac-3d'), pracCube, {});
+  drawPrac({});
   mountViewCtrl($('prac-viewctrl'), () => $('prac-3d'));
 
   if (!pracInited){
@@ -3646,11 +3956,12 @@ function pracFlush(){
 
   animateAlg($('prac-3d'), pracCube, [tok], {
     speed: 3,
+    opt: { cubeRot: pracCubeRot },
     onDone: cube => {
       pracCube = cube;
       pracMoves++;
       if (battle.active && !pracRunning) startPracTimer();
-      drawCube($('prac-3d'), pracCube, {});
+      drawPrac({});
       refreshPracUI();
       pracFlush();
 
@@ -3678,7 +3989,7 @@ function pracReset(){
   pracCube = solvedCube();
   pracMoves = 0;
   pracScrambleToks = [];
-  drawCube($('prac-3d'), pracCube, {});
+  drawPrac({});
   refreshPracUI();
   $('prac-time').textContent = '0.0';
   toast('已复原');
@@ -3693,6 +4004,8 @@ function pracStop(win){
   $('prac-time').textContent = secs.toFixed(1);
   if (win){
     pushLog('实战复原 ' + secs.toFixed(1) + ' 秒 / ' + pracMoves + ' 步');
+    if (typeof recordTraining === 'function')
+      recordTraining({ kind:'practice', secs:+secs.toFixed(1), moves:pracMoves });
     toast('🎉 ' + secs.toFixed(1) + ' 秒复原！用了 ' + pracMoves + ' 步');
   }
 }
@@ -3711,7 +4024,8 @@ function pracScramble(){
   pracRunning = false;
   clearInterval(pracTimer);
   $('prac-time').textContent = '0.0';
-  drawCube($('prac-3d'), pracCube, {});
+  if (typeof recordTraining === 'function') recordTraining({ kind:'scramble', moves: scr.length, by:'程序' });
+  drawPrac({});
   refreshPracUI();
   $('prac-state').textContent = '已打乱，开始拧';
   toast('打乱了！拧一步就开始计时');
@@ -3733,7 +4047,7 @@ function battleStart(){
   scr.forEach(t => { c = applyMove(c, moveOf(t)); });
   pracCube = c;
   pracMoves = 0;
-  drawCube($('prac-3d'), pracCube, {});
+  drawPrac({});
 
   const d = DIFFS.find(x => x.key === battleDiff);
 
@@ -3789,6 +4103,8 @@ function battlePlayerWin(){
   refreshBattleRecord();
 
   $('bt-msg').innerHTML = '🏆 <b>你赢了！</b>用时 ' + secs.toFixed(1) + ' 秒，' + pracMoves + ' 步。电脑才走到 ' + battle.aiSteps + ' 步。';
+  if (typeof recordTraining === 'function')
+    recordTraining({ kind:'battle', win:true, secs:+secs.toFixed(1), moves:pracMoves, opp:battle.diff.name });
   $('bt-start').textContent = '⚔️ 再打一场';
   $('bt-start').disabled = false;
   $('bt-my').textContent = secs.toFixed(1);
@@ -3806,6 +4122,8 @@ function battleAiWin(){
 
   $('bt-msg').innerHTML = '🤖 <b>电脑先完成了。</b>别灰心 —— 你还有 ' +
     solvedCubies(pracCube) + ' / 26 块已经归位，再练几次就追上了。';
+  if (typeof recordTraining === 'function')
+    recordTraining({ kind:'battle', win:false, moves:pracMoves, opp:battle.diff.name });
   $('bt-start').textContent = '⚔️ 再打一场';
   $('bt-start').disabled = false;
   $('bt-ai').textContent = (battle.diff.ms/1000).toFixed(1);
@@ -3841,6 +4159,146 @@ function renderPracLog(){
       (dt.getMonth()+1) + '/' + dt.getDate() + '</span>';
     host.appendChild(d);
   });
+}
+
+/* ---------------- 主动接替 / CFOP 还原思路 + 顶层情形识别 ---------------- */
+let cfopThinkSol = null;   /* 当前"还原思路"的完整解法序列（供演示） */
+
+/* 底层两层是否已复原（只剩顶层待处理） */
+function isLastLayer(cube){
+  if (!cube.D.every(c => c === cube.D[4])) return false;
+  for (const f of ['F','R','B','L']){
+    for (let i = 3; i < 9; i++) if (cube[f][i] !== cube[f][4]) return false;
+  }
+  return true;
+}
+function isTopOriented(cube){ return cube.U.every(c => c === UP_COLOR); }
+
+/* 从当前魔方读出顶面 9 格（1=顶面已翻上）与四侧顶条，按 DATA 的约定 */
+function extractOLL(cube){ return cube.U.map(c => c === UP_COLOR ? 1 : 0); }
+function extractRing(cube){
+  return {
+    U: cube.U.slice(),
+    F: [cube.F[0], cube.F[1], cube.F[2]],
+    R: [cube.R[0], cube.R[1], cube.R[2]],
+    B: [cube.B[0], cube.B[1], cube.B[2]],
+    L: [cube.L[0], cube.L[1], cube.L[2]]
+  };
+}
+function arrEq(a, b){ return a.length === b.length && a.every((x,i) => x === b[i]); }
+function ringEq(r1, r2){
+  return ['F','R','B','L'].every(f => arrEq(r1[f], r2[f]));
+}
+
+/* 顶层 OLL 情形识别（带 4 种整体 U 转向归一化） */
+function matchOLL(cube){
+  const oll = (DATA.OLL || []);
+  for (let k = 0; k < 4; k++){
+    const ck = applyAlg(cube, parseNotation('U'.repeat(k)));
+    const p = extractOLL(ck);
+    for (const it of oll){
+      if (it.pattern && arrEq(p, it.pattern))
+        return { num: it.num, notation: it.notation, shape: (it.shape && it.shape[0]) || '' };
+    }
+  }
+  return null;
+}
+/* 顶层 PLL 情形识别 */
+function matchPLL(cube){
+  const pll = (DATA.PLL || []);
+  for (let k = 0; k < 4; k++){
+    const ck = applyAlg(cube, parseNotation('U'.repeat(k)));
+    const r = extractRing(ck);
+    for (const it of pll){
+      if (it.ring && ringEq(r, it.ring))
+        return { num: it.num, notation: it.notation, group: it.group || '' };
+    }
+  }
+  return null;
+}
+
+function fmtTok2(t){ return t.f + (t.prime ? "'" : '') + (t.dbl ? '2' : ''); }
+
+/* 看 CFOP 还原思路：基于"程序随机打乱"的序列反推一种正确解法，并识别顶层 OLL/PLL 情形 */
+function showCfopThink(){
+  const panel = $('cfop-think');
+  if (!panel) return;
+  if (!pracScrambleToks || !pracScrambleToks.length){
+    panel.style.display = 'block';
+    panel.innerHTML = '<div class="sub">请先点「🤖 程序随机打乱」，再来看还原思路。</div>';
+    return;
+  }
+  const sol = invert(pracScrambleToks);   /* 把打乱倒回去 = 一种正确解法 */
+  cfopThinkSol = sol;
+
+  /* 模拟走一遍，找到"底层两层已好 / 顶面已翻好"的临界点 */
+  let pLL = sol.length, pOLL = sol.length;
+  for (let i = 0; i <= sol.length; i++){
+    const st = applyAlg(pracCube, sol.slice(0, i));
+    if (st && isLastLayer(st)){ pLL = i; break; }
+  }
+  for (let i = pLL; i <= sol.length; i++){
+    const st = applyAlg(pracCube, sol.slice(0, i));
+    if (st && isTopOriented(st)){ pOLL = i; break; }
+  }
+
+  /* 在 LL-ready 那一刻识别 OLL/PLL 情形（教孩子"看形选招"） */
+  const llState = applyAlg(pracCube, sol.slice(0, pLL));
+  const ollCase = llState ? matchOLL(llState) : null;
+  const pllCase = llState ? matchPLL(llState) : null;
+
+  const phaseCards = [];
+  phaseCards.push(phaseCard('① 底层十字 + F2L（前两层）',
+    sol.slice(0, pLL),
+    '先把白色十字搭好，再把角块和棱块<b>配对</b>一起塞进前两层。前两层搞定后，就只剩顶层了。'));
+  phaseCards.push(phaseCard('② OLL · 翻顶面',
+    sol.slice(pLL, pOLL),
+    ollCase
+      ? '此时顶面是 <b>OLL 第' + ollCase.num + '式（' + ollCase.shape + '）</b>，标准公式：<span class="mono">' + ollCase.notation + '</span>。把顶面全部翻成白色。'
+      : '把顶面所有块翻成白色（这就是 OLL）。'));
+  phaseCards.push(phaseCard('③ PLL · 摆顶层',
+    sol.slice(pOLL),
+    pllCase
+      ? '此时顶层是 <b>PLL 第' + pllCase.num + '式（' + pllCase.group + '）</b>，标准公式：<span class="mono">' + pllCase.notation + '</span>。把顶层位置摆正，魔方就复原啦！'
+      : '把顶层位置摆正（这就是 PLL），魔方就复原啦！'));
+
+  let html = '<div class="sub" style="margin-bottom:8px;">这是把刚才的打乱<b>倒回去</b>的一种正确解法。真正比赛里你会换成更短的 CFOP 公式——下面按 <b>十字→F2L→OLL→PLL</b> 四步拆开给你看：</div>';
+  html += phaseCards.join('');
+  html += '<div class="row center" style="margin-top:12px;gap:8px;">'
+        + '<button class="btn blue sm" onclick="demoCfopThink()">▶ 按思路演示一遍</button>'
+        + '<button class="btn alt sm" onclick="hideCfopThink()">收起</button></div>';
+  panel.style.display = 'block';
+  panel.innerHTML = html;
+  panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+function phaseCard(title, toks, tip){
+  const chips = toks.length
+    ? '<div class="chunks">' + toks.map(t => '<span class="chunk">' + fmtTok2(t) + '</span>').join('') + '</div>'
+    : '<div class="sub">（这步在本解法里为空）</div>';
+  return '<div class="card tight" style="margin-top:10px;background:#f8fbff;border:1px solid var(--line);">'
+    + '<div class="ptitle" style="color:var(--blue);">' + title + ' · ' + toks.length + ' 步</div>'
+    + chips
+    + '<div class="talk" style="margin-top:6px;">' + tip + '</div>'
+    + '</div>';
+}
+function hideCfopThink(){ const p = $('cfop-think'); if (p) p.style.display = 'none'; }
+
+/* 按思路把解法在练习魔方上动画演示一遍 */
+function demoCfopThink(){
+  if (!cfopThinkSol) { showCfopThink(); if (!cfopThinkSol) return; }
+  if (!isSolved(pracCube)) pracReset();   /* 先回到复原态，再正向演示 */
+  const sol = cfopThinkSol;
+  let cube = solvedCube();
+  let i = 0;
+  const tick = () => {
+    if (i >= sol.length) { toast('🎉 演示完成，这就是 CFOP 还原思路！'); return; }
+    const t = sol[i++];
+    animateAlg($('prac-3d'), cube, [t], {
+      speed: 2.2,
+      onDone: c => { cube = c; pracCube = c; drawPrac(); refreshPracUI(); tick(); }
+    });
+  };
+  tick();
 }
 
 /* ==== src/55-ble.js ==== */
@@ -4502,6 +4960,9 @@ function ganGen2Parse(bits, st, out) {
   } else if (eventType === 0x0D) {    /* DISCONNECT */
     out.push({ type: 'DISCONNECT' });
     st.seen = true;
+  } else if (eventType === 0x01) {    /* 整体旋转（手腕整转）：陀螺仪/朝向包 */
+    out.push({ type: 'GYRO', bits: bits });
+    st.seen = true;
   }
 }
 
@@ -4589,6 +5050,37 @@ let ganFaceletsTimer = null;
 let ganLastHandle = null;           /* 记住上次连过的设备，用于前后台自动重连 */
 let ganBackgroundRelease = false;   /* 后台主动断开标记（避免误报"断开了"） */
 
+/* ---------------- 整体旋转（手腕整转）联动 ----------------
+   GAN 整魔方手腕旋转时发的是 eventType=0x1 的包（拧单面才是 0x2，见上方解析）。
+   下面把 0x1 包解成「整魔方在空间中转了多少度」，再喂给屏幕渲染（opt.cubeRot）。
+   字节布局各代略有差异，先用可调参数读，连上真机后用封包日志核对、微调即可。 */
+let ganGyroRef = null;             /* 基准朝向：首条 0x1 包作为 0°，使屏幕从「对齐」开始 */
+let ganGyroLogT = 0;               /* 监测采样节流时间戳 */
+/* 可调参数（真机封包日志核对后微调） */
+const GYRO_OFF   = [2, 4, 6];       /* 三个 int16 在解密包里的字节起点（小端） */
+const GYRO_SCALE = 0.06;            /* 每单位 ≈ 0.06°；真机微调 */
+const GYRO_AXES  = ['x', 'y', 'z']; /* 三个 int16 分别对应屏幕的哪根轴 */
+const GYRO_SIGN  = [1, 1, 1];       /* 必要时取 -1 翻转某根轴 */
+function ganReadGyroRaw(bits){
+  return GYRO_OFF.map(off => {
+    const lo = ganBitWord(bits, off*8, 8);
+    const hi = ganBitWord(bits, off*8 + 8, 8);
+    let v = (hi << 8) | lo;                 /* 小端 int16 */
+    if (v >= 0x8000) v -= 0x10000;
+    return v;
+  });
+}
+function ganDecodeGyro(bits){
+  const raw = ganReadGyroRaw(bits);
+  if (!ganGyroRef) ganGyroRef = raw.slice();   /* 首次采样当基准，屏幕与真魔方对齐 */
+  const rot = { x:0, y:0, z:0 };
+  for (let i=0;i<3;i++){
+    const d = (raw[i] - ganGyroRef[i]) * GYRO_SCALE * GYRO_SIGN[i];
+    rot[GYRO_AXES[i]] = d;
+  }
+  return { rot, raw };
+}
+
 /* ---------------- 实时封包记录（定位"整转误判成单面"用） ----------------
    真机连上后逐条记录魔方发来的原始数据，便于在 iPad 上直接看出：
    单面拧 → 出现哪种 type；整魔方手腕旋转 → 出现哪种 type（多半是朝向/陀螺仪信号）。 */
@@ -4614,6 +5106,9 @@ function ganLogAutoStart() { ganLogOn = true; ganLogRefreshBtn(); }
 function ganSetStatus(html) {
   const e = $('gan-status');
   if (e) e.innerHTML = html;
+  /* 公式跟练面板也在看连接状态，同步过去（面板存在时才写） */
+  const fp = $('m-follow-status');
+  if (fp) fp.innerHTML = html;
 }
 
 /* 环境诊断：显示当前蓝牙通道是否可用（排查「连不上」用） */
@@ -4747,6 +5242,8 @@ async function pracConnectGAN() {
                '现在拧真魔方，屏幕上的魔方会跟着转，并自动开始计时。');
   toast('已连接，拧一下试试');
   ganLogAutoStart();   /* 连上即自动记录封包，方便定位"整转误判成单面" */
+  ganGyroRef = null;   /* 整转联动：首条 0x1 包作为基准朝向，屏幕与真魔方对齐 */
+  if (typeof resetPracOrientation === 'function') resetPracOrientation();
 
   if (isSolved(pracCube) && currentPage === 'practice') pracScramble();
 }
@@ -4779,6 +5276,7 @@ function onGanPacket(bytes) {
       if (ev.type === 'BATTERY') return 'BATTERY ' + ev.level + '%';
       if (ev.type === 'DISCONNECT') return 'DISCONNECT';
       if (ev.type === 'FACELETS') return 'FACELETS';
+      if (ev.type === 'GYRO') return 'GYRO(整转)';
       return ev.type;
     }).join(' ');
   } else {
@@ -4792,12 +5290,30 @@ function onGanPacket(bytes) {
       if (faceIdx > 5) continue;
       const f = ganFaceMap[faceIdx] || GAN_FACE[faceIdx];
       /* 方向：0=顺时针 1=逆时针 2=180° */
-      pracDo(f + (ev.direction === 2 ? '2' : (ev.direction === 1 ? "'" : '')));
+      const label = f + (ev.direction === 2 ? '2' : (ev.direction === 1 ? "'" : ''));
+      if (formulaFollow && formulaFollow.active) formulaFollowMove(label);  /* 公式跟练：逐步检查 */
+      else pracDo(label);                                                  /* 否则驱动实战练习魔方 */
     } else if (ev.type === 'BATTERY') {
       if (ev.level !== ganBattery) {
         ganBattery = ev.level;
         if (ganBattery <= 20) toast('🔋 魔方电量低了（' + ganBattery + '%），该换电池啦');
       }
+    } else if (ev.type === 'GYRO') {
+      /* 整魔方手腕旋转：解成整体朝向，屏幕魔方跟着整体转 */
+      try {
+        const g = ganDecodeGyro(ev.bits);
+        applyPracCubeRot(g.rot);
+        ganLogPush(rawHex, decHex, 'GYRO → 屏幕整体旋转 x=' + g.rot.x.toFixed(1) +
+          '° y=' + g.rot.y.toFixed(1) + '° z=' + g.rot.z.toFixed(1) +
+          '° （raw=' + g.raw.join(',') + '）');
+        /* 监测：低频记录整体朝向，便于回看「整转」有没有正确联动（约每 1.5 秒一条） */
+        const now = Date.now();
+        if (now - (ganGyroLogT || 0) > 1500){
+          ganGyroLogT = now;
+          if (typeof recordTraining === 'function')
+            recordTraining({ kind:'sensor', rot:{ x:+g.rot.x.toFixed(1), y:+g.rot.y.toFixed(1), z:+g.rot.z.toFixed(1) } });
+        }
+      } catch (e) {}
     } else if (ev.type === 'DISCONNECT') {
       ganSetStatus('⚠️ 魔方主动断开了（可能关机了）。点「连接魔方」重新连一次。');
     }
@@ -4930,7 +5446,9 @@ function ganZero() {
   pracCube = solvedCube();
   pracMoves = 0;
   pracScrambleToks = [];
-  if (typeof drawCube === 'function' && $('prac-3d')) drawCube($('prac-3d'), pracCube, {});
+  if (typeof resetPracOrientation === 'function') resetPracOrientation();  /* 屏幕整体朝向也归零 */
+  ganGyroRef = null;                       /* 下一条 0x1 包重新作为基准，使屏幕与真魔方对齐 */
+  if (typeof drawPrac === 'function' && $('prac-3d')) drawPrac({});
   if (typeof refreshPracUI === 'function') refreshPracUI();
   toast('↺ 已归零：请把真魔方也拧回复原状态，二者就同步了');
 }
@@ -4969,6 +5487,8 @@ async function ganReconnect(handle) {
   ganSetStatus('✅ 已重新连接 <b>' + (handle.name || '魔方') + '</b>！拧真魔方试试。');
   toast('已重新连接');
   ganLogAutoStart();   /* 连上即自动记录封包 */
+  ganGyroRef = null;   /* 整转联动：重新以当前朝向为基准 */
+  if (typeof resetPracOrientation === 'function') resetPracOrientation();
   if (isSolved(pracCube) && currentPage === 'practice') pracScramble();
 }
 

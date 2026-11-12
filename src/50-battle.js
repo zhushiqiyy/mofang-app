@@ -11,6 +11,25 @@ let pracTimer = null;
 let pracBusy = false;
 const pracQueue = [];
 
+/* 真魔方整体朝向（手腕整转），由 GAN 陀螺仪 0x1 包更新；渲染时叠加到魔方上。
+   仅改渲染，不改 pracCube 贴纸状态——整转不改变魔方各块相对位置，只改变整魔方在空间中的朝向。 */
+let pracCubeRot = { x:0, y:0, z:0 };
+let pracRotDirty = false;
+function drawPrac(opt){
+  drawCube($('prac-3d'), pracCube, Object.assign({ cubeRot: pracCubeRot }, opt || {}));
+}
+function resetPracOrientation(){ pracCubeRot = { x:0, y:0, z:0 }; }
+/* GAN 角度更新后，用 rAF 合帧重绘，避免高频陀螺仪包抖得满屏重画 */
+function applyPracCubeRot(rot){
+  pracCubeRot = rot;
+  if (pracRotDirty) return;
+  pracRotDirty = true;
+  requestAnimationFrame(() => {
+    pracRotDirty = false;
+    if ($('prac-3d')) drawPrac();
+  });
+}
+
 const DIFFS = [
   { key:'easy', name:'新手', em:'🐣', ms:46000, steps:60, tip:'慢悠悠，刚学会也能赢' },
   { key:'mid',  name:'高手', em:'🐯', ms:27000, steps:56, tip:'要认真拧才追得上' },
@@ -24,7 +43,7 @@ let pracInited = false;
 
 function renderPractice(){
   const cv = cubeView($('prac-3d'));
-  drawCube($('prac-3d'), pracCube, {});
+  drawPrac({});
   mountViewCtrl($('prac-viewctrl'), () => $('prac-3d'));
 
   if (!pracInited){
@@ -106,11 +125,12 @@ function pracFlush(){
 
   animateAlg($('prac-3d'), pracCube, [tok], {
     speed: 3,
+    opt: { cubeRot: pracCubeRot },
     onDone: cube => {
       pracCube = cube;
       pracMoves++;
       if (battle.active && !pracRunning) startPracTimer();
-      drawCube($('prac-3d'), pracCube, {});
+      drawPrac({});
       refreshPracUI();
       pracFlush();
 
@@ -138,7 +158,7 @@ function pracReset(){
   pracCube = solvedCube();
   pracMoves = 0;
   pracScrambleToks = [];
-  drawCube($('prac-3d'), pracCube, {});
+  drawPrac({});
   refreshPracUI();
   $('prac-time').textContent = '0.0';
   toast('已复原');
@@ -153,6 +173,8 @@ function pracStop(win){
   $('prac-time').textContent = secs.toFixed(1);
   if (win){
     pushLog('实战复原 ' + secs.toFixed(1) + ' 秒 / ' + pracMoves + ' 步');
+    if (typeof recordTraining === 'function')
+      recordTraining({ kind:'practice', secs:+secs.toFixed(1), moves:pracMoves });
     toast('🎉 ' + secs.toFixed(1) + ' 秒复原！用了 ' + pracMoves + ' 步');
   }
 }
@@ -171,7 +193,8 @@ function pracScramble(){
   pracRunning = false;
   clearInterval(pracTimer);
   $('prac-time').textContent = '0.0';
-  drawCube($('prac-3d'), pracCube, {});
+  if (typeof recordTraining === 'function') recordTraining({ kind:'scramble', moves: scr.length, by:'程序' });
+  drawPrac({});
   refreshPracUI();
   $('prac-state').textContent = '已打乱，开始拧';
   toast('打乱了！拧一步就开始计时');
@@ -193,7 +216,7 @@ function battleStart(){
   scr.forEach(t => { c = applyMove(c, moveOf(t)); });
   pracCube = c;
   pracMoves = 0;
-  drawCube($('prac-3d'), pracCube, {});
+  drawPrac({});
 
   const d = DIFFS.find(x => x.key === battleDiff);
 
@@ -249,6 +272,8 @@ function battlePlayerWin(){
   refreshBattleRecord();
 
   $('bt-msg').innerHTML = '🏆 <b>你赢了！</b>用时 ' + secs.toFixed(1) + ' 秒，' + pracMoves + ' 步。电脑才走到 ' + battle.aiSteps + ' 步。';
+  if (typeof recordTraining === 'function')
+    recordTraining({ kind:'battle', win:true, secs:+secs.toFixed(1), moves:pracMoves, opp:battle.diff.name });
   $('bt-start').textContent = '⚔️ 再打一场';
   $('bt-start').disabled = false;
   $('bt-my').textContent = secs.toFixed(1);
@@ -266,6 +291,8 @@ function battleAiWin(){
 
   $('bt-msg').innerHTML = '🤖 <b>电脑先完成了。</b>别灰心 —— 你还有 ' +
     solvedCubies(pracCube) + ' / 26 块已经归位，再练几次就追上了。';
+  if (typeof recordTraining === 'function')
+    recordTraining({ kind:'battle', win:false, moves:pracMoves, opp:battle.diff.name });
   $('bt-start').textContent = '⚔️ 再打一场';
   $('bt-start').disabled = false;
   $('bt-ai').textContent = (battle.diff.ms/1000).toFixed(1);
@@ -301,4 +328,144 @@ function renderPracLog(){
       (dt.getMonth()+1) + '/' + dt.getDate() + '</span>';
     host.appendChild(d);
   });
+}
+
+/* ---------------- 主动接替 / CFOP 还原思路 + 顶层情形识别 ---------------- */
+let cfopThinkSol = null;   /* 当前"还原思路"的完整解法序列（供演示） */
+
+/* 底层两层是否已复原（只剩顶层待处理） */
+function isLastLayer(cube){
+  if (!cube.D.every(c => c === cube.D[4])) return false;
+  for (const f of ['F','R','B','L']){
+    for (let i = 3; i < 9; i++) if (cube[f][i] !== cube[f][4]) return false;
+  }
+  return true;
+}
+function isTopOriented(cube){ return cube.U.every(c => c === UP_COLOR); }
+
+/* 从当前魔方读出顶面 9 格（1=顶面已翻上）与四侧顶条，按 DATA 的约定 */
+function extractOLL(cube){ return cube.U.map(c => c === UP_COLOR ? 1 : 0); }
+function extractRing(cube){
+  return {
+    U: cube.U.slice(),
+    F: [cube.F[0], cube.F[1], cube.F[2]],
+    R: [cube.R[0], cube.R[1], cube.R[2]],
+    B: [cube.B[0], cube.B[1], cube.B[2]],
+    L: [cube.L[0], cube.L[1], cube.L[2]]
+  };
+}
+function arrEq(a, b){ return a.length === b.length && a.every((x,i) => x === b[i]); }
+function ringEq(r1, r2){
+  return ['F','R','B','L'].every(f => arrEq(r1[f], r2[f]));
+}
+
+/* 顶层 OLL 情形识别（带 4 种整体 U 转向归一化） */
+function matchOLL(cube){
+  const oll = (DATA.OLL || []);
+  for (let k = 0; k < 4; k++){
+    const ck = applyAlg(cube, parseNotation('U'.repeat(k)));
+    const p = extractOLL(ck);
+    for (const it of oll){
+      if (it.pattern && arrEq(p, it.pattern))
+        return { num: it.num, notation: it.notation, shape: (it.shape && it.shape[0]) || '' };
+    }
+  }
+  return null;
+}
+/* 顶层 PLL 情形识别 */
+function matchPLL(cube){
+  const pll = (DATA.PLL || []);
+  for (let k = 0; k < 4; k++){
+    const ck = applyAlg(cube, parseNotation('U'.repeat(k)));
+    const r = extractRing(ck);
+    for (const it of pll){
+      if (it.ring && ringEq(r, it.ring))
+        return { num: it.num, notation: it.notation, group: it.group || '' };
+    }
+  }
+  return null;
+}
+
+function fmtTok2(t){ return t.f + (t.prime ? "'" : '') + (t.dbl ? '2' : ''); }
+
+/* 看 CFOP 还原思路：基于"程序随机打乱"的序列反推一种正确解法，并识别顶层 OLL/PLL 情形 */
+function showCfopThink(){
+  const panel = $('cfop-think');
+  if (!panel) return;
+  if (!pracScrambleToks || !pracScrambleToks.length){
+    panel.style.display = 'block';
+    panel.innerHTML = '<div class="sub">请先点「🤖 程序随机打乱」，再来看还原思路。</div>';
+    return;
+  }
+  const sol = invert(pracScrambleToks);   /* 把打乱倒回去 = 一种正确解法 */
+  cfopThinkSol = sol;
+
+  /* 模拟走一遍，找到"底层两层已好 / 顶面已翻好"的临界点 */
+  let pLL = sol.length, pOLL = sol.length;
+  for (let i = 0; i <= sol.length; i++){
+    const st = applyAlg(pracCube, sol.slice(0, i));
+    if (st && isLastLayer(st)){ pLL = i; break; }
+  }
+  for (let i = pLL; i <= sol.length; i++){
+    const st = applyAlg(pracCube, sol.slice(0, i));
+    if (st && isTopOriented(st)){ pOLL = i; break; }
+  }
+
+  /* 在 LL-ready 那一刻识别 OLL/PLL 情形（教孩子"看形选招"） */
+  const llState = applyAlg(pracCube, sol.slice(0, pLL));
+  const ollCase = llState ? matchOLL(llState) : null;
+  const pllCase = llState ? matchPLL(llState) : null;
+
+  const phaseCards = [];
+  phaseCards.push(phaseCard('① 底层十字 + F2L（前两层）',
+    sol.slice(0, pLL),
+    '先把白色十字搭好，再把角块和棱块<b>配对</b>一起塞进前两层。前两层搞定后，就只剩顶层了。'));
+  phaseCards.push(phaseCard('② OLL · 翻顶面',
+    sol.slice(pLL, pOLL),
+    ollCase
+      ? '此时顶面是 <b>OLL 第' + ollCase.num + '式（' + ollCase.shape + '）</b>，标准公式：<span class="mono">' + ollCase.notation + '</span>。把顶面全部翻成白色。'
+      : '把顶面所有块翻成白色（这就是 OLL）。'));
+  phaseCards.push(phaseCard('③ PLL · 摆顶层',
+    sol.slice(pOLL),
+    pllCase
+      ? '此时顶层是 <b>PLL 第' + pllCase.num + '式（' + pllCase.group + '）</b>，标准公式：<span class="mono">' + pllCase.notation + '</span>。把顶层位置摆正，魔方就复原啦！'
+      : '把顶层位置摆正（这就是 PLL），魔方就复原啦！'));
+
+  let html = '<div class="sub" style="margin-bottom:8px;">这是把刚才的打乱<b>倒回去</b>的一种正确解法。真正比赛里你会换成更短的 CFOP 公式——下面按 <b>十字→F2L→OLL→PLL</b> 四步拆开给你看：</div>';
+  html += phaseCards.join('');
+  html += '<div class="row center" style="margin-top:12px;gap:8px;">'
+        + '<button class="btn blue sm" onclick="demoCfopThink()">▶ 按思路演示一遍</button>'
+        + '<button class="btn alt sm" onclick="hideCfopThink()">收起</button></div>';
+  panel.style.display = 'block';
+  panel.innerHTML = html;
+  panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+function phaseCard(title, toks, tip){
+  const chips = toks.length
+    ? '<div class="chunks">' + toks.map(t => '<span class="chunk">' + fmtTok2(t) + '</span>').join('') + '</div>'
+    : '<div class="sub">（这步在本解法里为空）</div>';
+  return '<div class="card tight" style="margin-top:10px;background:#f8fbff;border:1px solid var(--line);">'
+    + '<div class="ptitle" style="color:var(--blue);">' + title + ' · ' + toks.length + ' 步</div>'
+    + chips
+    + '<div class="talk" style="margin-top:6px;">' + tip + '</div>'
+    + '</div>';
+}
+function hideCfopThink(){ const p = $('cfop-think'); if (p) p.style.display = 'none'; }
+
+/* 按思路把解法在练习魔方上动画演示一遍 */
+function demoCfopThink(){
+  if (!cfopThinkSol) { showCfopThink(); if (!cfopThinkSol) return; }
+  if (!isSolved(pracCube)) pracReset();   /* 先回到复原态，再正向演示 */
+  const sol = cfopThinkSol;
+  let cube = solvedCube();
+  let i = 0;
+  const tick = () => {
+    if (i >= sol.length) { toast('🎉 演示完成，这就是 CFOP 还原思路！'); return; }
+    const t = sol[i++];
+    animateAlg($('prac-3d'), cube, [t], {
+      speed: 2.2,
+      onDone: c => { cube = c; pracCube = c; drawPrac(); refreshPracUI(); tick(); }
+    });
+  };
+  tick();
 }

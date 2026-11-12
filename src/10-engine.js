@@ -56,6 +56,16 @@ function rot3(p, ax, deg){
   return [c*x - s*y, s*x + c*y, z];
 }
 
+/* 整体旋转（手腕整转）：把魔方当刚体绕 x/y/z 各轴转若干度。
+   仅作用于渲染（pracCube 的贴纸状态不变），用于「真魔方整转→屏幕整体跟着转」的联动。 */
+function rotEuler(p, rx, ry, rz){
+  let q = p;
+  if (rz) q = rot3(q, 'z', rz);
+  if (ry) q = rot3(q, 'y', ry);
+  if (rx) q = rot3(q, 'x', rx);
+  return q;
+}
+
 const MOVEDEF = {
   U:{axis:'z',vals:[1],ang:-90},   D:{axis:'z',vals:[-1],ang:90},
   R:{axis:'x',vals:[1],ang:-90},   L:{axis:'x',vals:[-1],ang:90},
@@ -121,9 +131,12 @@ function applyAlg(cube, toks){
   for (const t of toks){ c = applyMove(c, moveOf(t)); if (!c) return null; }
   return c;
 }
+const UP_COLOR = 'w';   /* 顶面色（白）。与校准文字/色板一致：U 上白、D 下黄。
+                           OLL/PLL 的"顶面识别"一律按 UP_COLOR 判断，不再写死 'y'，
+                           这样无论顶色是白还是黄，图案识别都不会全灰。 */
 function solvedCube(){
   const f = c => new Array(9).fill(c);
-  return { U:f('y'), R:f('r'), F:f('g'), D:f('w'), L:f('o'), B:f('b') };
+  return { U:f(UP_COLOR), R:f('r'), F:f('g'), D:f('y'), L:f('o'), B:f('b') };
 }
 function invert(toks){
   return toks.slice().reverse().map(t => ({ f:t.f, prime:!t.prime, dbl:t.dbl }));
@@ -333,6 +346,10 @@ function drawCube(el, cube, opt){
   const hlPos = hlList.map(h => h.pos.join(','));
   const dimSet = opt.dimFaces || null;
 
+  /* 整体旋转（真魔方手腕整转联动）：把整魔方当刚体转。仅改渲染，不改贴纸状态。 */
+  const R = opt.cubeRot;
+  const rot = (p) => R ? rotEuler(p, R.x || 0, R.y || 0, R.z || 0) : p;
+
   /* 全部先藏起来，再按可见性打开（避免上一帧的残留） */
   for (let i=0;i<cv.polys.length;i++) cv.polys[i].style.display = 'none';
 
@@ -352,6 +369,8 @@ function drawCube(el, cube, opt){
         corners = corners.map(p => rot3(p, mv.axis, angled));
         normal  = rot3(st.n, mv.axis, angled);
       }
+      corners = corners.map(rot);          /* 叠加整体旋转（手腕整转联动） */
+      normal  = rot(normal);
       const nv = toView(normal, yaw, pitch);
       if (nv[1] <= 0.002) continue;                 /* 背向镜头 → 不画 */
       const pts = corners.map(p => {
@@ -362,7 +381,7 @@ function drawCube(el, cube, opt){
     }
     if (!items.length) continue;
 
-    const depth = toView(g.pos, yaw, pitch)[1];
+    const depth = toView(rot(g.pos), yaw, pitch)[1];
     groups.push({ items, depth, key, hlIdx: hlPos.indexOf(key) });
   }
 
@@ -376,13 +395,14 @@ function drawCube(el, cube, opt){
   const fxDef = CUBE_EFFECTS[CUBE_FX] || null;
   for (const f in FACES){
     const o = FACES[f];
-    const nv = toView(o.n, yaw, pitch);
+    const C2 = rot(o.C), u2 = rot(o.u), v2 = rot(o.v), n2 = rot(o.n);
+    const nv = toView(n2, yaw, pitch);
     if (nv[1] <= 0.001) continue;
     const quad = [[1,1],[-1,1],[-1,-1],[1,-1]].map(([a,b]) => {
       const p3 = [
-        o.C[0]*SURF + o.u[0]*1.53*a + o.v[0]*1.53*b,
-        o.C[1]*SURF + o.u[1]*1.53*a + o.v[1]*1.53*b,
-        o.C[2]*SURF + o.u[2]*1.53*a + o.v[2]*1.53*b
+        C2[0]*SURF + u2[0]*1.53*a + v2[0]*1.53*b,
+        C2[1]*SURF + u2[1]*1.53*a + v2[1]*1.53*b,
+        C2[2]*SURF + u2[2]*1.53*a + v2[2]*1.53*b
       ];
       const v = toView(p3, yaw, pitch);
       return (cx + v[0]*S).toFixed(2) + ',' + (cy - v[2]*S).toFixed(2);
@@ -441,7 +461,7 @@ function drawCube(el, cube, opt){
       const col = h.color || PALETTE[idx % PALETTE.length];
       const [ hx, hy, hz ] = h.pos;
       /* 标签圆点放在该块中心投影处（乘 1.55 贴到表面外） */
-      const v = toView([hx*1.55, hy*1.55, hz*1.55], yaw, pitch);
+      const v = toView(rot([hx*1.55, hy*1.55, hz*1.55]), yaw, pitch);
       const px = cx + v[0]*S, py = cy - v[2]*S;
 
       /* ring：在格子外面套一圈（深色描边+白环），任何贴纸颜色上都看得清 */
@@ -481,7 +501,7 @@ function drawCube(el, cube, opt){
   /* 中心点小标记，帮孩子确认"中心永远不动" */
   if (opt.showCenters){
     for (const f of ['U','F','R']){
-      const v = toView([FACES[f].n[0]*1.55, FACES[f].n[1]*1.55, FACES[f].n[2]*1.55], yaw, pitch);
+      const v = toView(rot([FACES[f].n[0]*1.55, FACES[f].n[1]*1.55, FACES[f].n[2]*1.55]), yaw, pitch);
       if (v[1] <= 0) continue;
       const t = document.createElementNS(SVGNS, 'text');
       t.setAttribute('x', cx + v[0]*S); t.setAttribute('y', cy - v[2]*S + 4);
@@ -764,7 +784,7 @@ function buildChart(host, src, opt){
   for (let i=0;i<9;i++){
     const col = ring.U[i];
     if (opt.mode === 'oll'){
-      uFace.appendChild(mkPure(col === 'y' ? COLORS.y : '#d9e0ee'));
+      uFace.appendChild(mkPure(col === UP_COLOR ? COLORS[UP_COLOR] : '#d9e0ee'));
     } else {
       uFace.appendChild(mk(COLORS[col]));
     }
@@ -802,7 +822,7 @@ function buildChart(host, src, opt){
   if (opt.mode === 'oll'){
     const lab = document.createElement('div');
     lab.className = 'chart-label';
-    lab.textContent = '黄色 = 顶面已经翻上来的块 · 灰色 = 还没翻上来';
+    lab.textContent = '白色 = 顶面已经翻上来的块 · 灰色 = 还没翻上来';
     host.appendChild(lab);
   }
   return chart;
@@ -822,7 +842,7 @@ function ollThumb(pattern, cell){
   g.style.cssText = 'display:grid;grid-template-columns:repeat(3,'+cell+'px);gap:2px;margin:4px auto 2px;width:max-content;';
   pattern.forEach(v => {
     const d = document.createElement('div');
-    d.style.cssText = 'width:'+cell+'px;height:'+cell+'px;border-radius:2px;background:'+(v ? COLORS.y : '#d9e0ee')+';';
+    d.style.cssText = 'width:'+cell+'px;height:'+cell+'px;border-radius:2px;background:'+(v ? COLORS[UP_COLOR] : '#d9e0ee')+';';
     g.appendChild(d);
   });
   return g;
