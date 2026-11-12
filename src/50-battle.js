@@ -334,6 +334,7 @@ function renderPracLog(){
 /* ---------------- 主动接替 / CFOP 还原思路 + 顶层情形识别 ---------------- */
 let cfopThinkSol = null;   /* 当前"还原思路"的完整解法序列（供演示） */
 let cfopThinkMeta = null;  /* 各阶段临界点（供演示时高亮当前阶段） */
+let cfopThinkStart = null; /* 标准打乱态（解法起点）：演示/跟练都从这里开始，保证每次干净复位 */
 
 /* 底层两层是否已复原（只剩顶层待处理） */
 function isLastLayer(cube){
@@ -401,6 +402,7 @@ function showCfopThink(){
   }
   const sol = invert(pracScrambleToks);   /* 把打乱倒回去 = 一种正确解法 */
   cfopThinkSol = sol;
+  cfopThinkStart = applyAlg(solvedCube(), pracScrambleToks.slice());  /* 标准打乱态：解法起点 */
 
   /* 模拟走一遍，找到"底层两层已好 / 顶面已翻好"的临界点 */
   let pLL = sol.length, pOLL = sol.length;
@@ -438,13 +440,23 @@ function showCfopThink(){
            + '<div class="viewctrl" id="cfop-viewctrl" style="margin-bottom:8px;"></div>'
            + '<div class="sub" style="margin-bottom:8px;">这是把刚才的打乱<b>倒回去</b>的一种正确解法。真正比赛里你会换成更短的 CFOP 公式——下面按 <b>十字→F2L→OLL→PLL</b> 四步拆开给你看：</div>';
   html += phaseCards.join('');
+  html += '<div class="card tight" id="cfop-follow-card" style="margin-top:12px;background:#f0f7ff;border:1.5px solid #bcd8ff;">'
+        + '<div class="ptitle" style="color:var(--blue);">🔗 连真魔方跟练</div>'
+        + '<div id="cfop-follow-status" class="sub" style="font-size:12.5px;min-height:18px;">点「开始跟练」连上真魔方，照着步骤把打乱态拧回原状，屏幕会实时跟步并给意见。</div>'
+        + '<div class="chunks" id="cfop-follow-steps" style="margin-top:8px;"></div>'
+        + '<div id="cfop-follow-fb" class="sub" style="font-size:13px;margin-top:8px;font-weight:700;"></div>'
+        + '<div class="row center" style="margin-top:8px;gap:8px;">'
+        + '<button class="btn blue sm" id="cfop-follow-toggle" onclick="toggleCfopFollow()">开始跟练</button>'
+        + '<button class="btn alt sm" onclick="resetCfopFollow()">↺ 重来</button></div>'
+        + '</div>';
   html += '<div class="row center" style="margin-top:12px;gap:8px;">'
         + '<button class="btn blue sm" onclick="demoCfopThink()">▶ 按思路演示一遍</button>'
         + '<button class="btn alt sm" onclick="hideCfopThink()">收起</button></div>';
   panel.style.display = 'block';
   panel.innerHTML = html;
-  drawCube($('cfop-3d'), pracCube, {});
+  drawCube($('cfop-3d'), cfopThinkStart || pracCube, {});
   if (typeof mountViewCtrl === 'function') mountViewCtrl($('cfop-viewctrl'), () => $('cfop-3d'));
+  if (typeof renderCfopFollow === 'function') renderCfopFollow();
   panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 function phaseCard(title, toks, tip, id){
@@ -457,7 +469,77 @@ function phaseCard(title, toks, tip, id){
     + '<div class="talk" style="margin-top:6px;">' + tip + '</div>'
     + '</div>';
 }
-function hideCfopThink(){ const p = $('cfop-think'); if (p) p.style.display = 'none'; }
+function hideCfopThink(){ const p = $('cfop-think'); if (p) p.style.display = 'none'; if (cfopFollow) cfopFollow.active = false; }
+
+/* ---------------- 还原思路模块：连真魔方跟练（蓝牙） ----------------
+   真魔方每拧一步会镜像到面板的 3D 预览，并逐步与 cfopThinkSol 核对，给出对错与训练意见。 */
+let cfopFollow = null;   /* { active, started, stack, cube } */
+function cloneCube(c){ return { U:c.U.slice(), R:c.R.slice(), F:c.F.slice(), D:c.D.slice(), L:c.L.slice(), B:c.B.slice() }; }
+function renderCfopFollow(){
+  const host = $('cfop-follow-steps');
+  if (!host || !cfopFollow || !cfopThinkSol) return;
+  host.innerHTML = '';
+  const t = cfopThinkSol, st = cfopFollow.stack;
+  t.forEach((tk, i) => {
+    const b = document.createElement('button'); b.className = 'chunk'; b.textContent = fmtTok2(tk);
+    if (i < st.length) b.classList.add(mFollowTokEq(st[i], tk) ? 'ok' : 'bad');
+    else if (i === st.length) b.classList.add('now');
+    host.appendChild(b);
+  });
+}
+function cfopSetFb(txt, color){ const e = $('cfop-follow-fb'); if (e){ e.textContent = txt; if (color) e.style.color = color; } }
+function cfopFollowSetStatus(html){ const e = $('cfop-follow-status'); if (e) e.innerHTML = html; }
+function startCfopFollow(){
+  if (!cfopThinkSol){ showCfopThink(); if (!cfopThinkSol) return; }
+  cfopFollow = { active:true, started:true, stack:[], cube: cloneCube(cfopThinkStart || pracCube) };
+  const el3 = document.getElementById('cfop-3d'); if (el3) drawCube(el3, cfopFollow.cube, {});
+  renderCfopFollow();
+  cfopSetFb('准备就绪！照着下面步骤，把真魔方从打乱态拧回原状，屏幕会实时跟步。', '#1a7fd2');
+  const tg = $('cfop-follow-toggle'); if (tg) tg.textContent = '⏸ 暂停跟练';
+  if (!ganConn) pracConnectGAN();
+  else cfopFollowSetStatus('✅ 已连上真魔方，直接拧吧');
+}
+function toggleCfopFollow(){
+  if (!cfopFollow || !cfopFollow.started){ startCfopFollow(); return; }
+  cfopFollow.active = !cfopFollow.active;
+  const tg = $('cfop-follow-toggle');
+  if (tg) tg.textContent = cfopFollow.active ? '⏸ 暂停跟练' : '继续跟练';
+  cfopSetFb(cfopFollow.active ? '继续吧！' : '已暂停，再点继续。', '#1a7fd2');
+}
+function resetCfopFollow(){
+  if (!cfopFollow) return;
+  cfopFollow.stack = [];
+  cfopFollow.cube = cloneCube(cfopThinkStart || pracCube);
+  const el3 = document.getElementById('cfop-3d'); if (el3) drawCube(el3, cfopFollow.cube, {});
+  renderCfopFollow();
+  cfopSetFb('已重来，从第一步开始。', '#1a7fd2');
+}
+/* 真魔方每转一步调到这里：镜像到屏幕 + 与解法逐段核对 + 给训练意见 */
+function cfopFollowMove(label){
+  const el3 = document.getElementById('cfop-3d');
+  if (!cfopFollow || !cfopFollow.active || !el3) return;
+  const tok = { f: label[0], prime: label.indexOf("'") > 0, dbl: label.indexOf('2') > 0 };
+  const st = cfopFollow.stack;
+  if (st.length && mFollowTokEq(st[st.length-1], mFollowInv(tok))) st.pop();   /* 拧反了＝撤销上一步 */
+  else st.push(tok);
+  let cube = cloneCube(cfopThinkStart || pracCube);
+  st.forEach(t => { cube = applyMove(cube, moveOf(t)) || cube; });
+  cfopFollow.cube = cube;
+  drawCube(el3, cube, {});
+  renderCfopFollow();
+  const t = cfopThinkSol;
+  let wrong = -1;
+  for (let i = 0; i < st.length; i++){ if (!mFollowTokEq(st[i], t[i])){ wrong = i; break; } }
+  if (wrong >= 0){
+    cfopSetFb('❌ 第' + (wrong+1) + '步拧成了 ' + mFollowFmt(st[wrong]) + '，应该是 ' + mFollowFmt(t[wrong]) + '（方向或顺序不对，照图拧回去重来即可）', '#d23b3b');
+  } else if (st.length >= t.length){
+    cfopSetFb('🎉 整套还原思路跟练完成！每一步都对上了，真棒！', '#1a9e4b');
+    if (typeof recordTraining === 'function')
+      recordTraining({ kind:'formula', stage:'cfop', num:0, ok:true, moves: st.length, note:'CFOP思路跟练' });
+  } else {
+    cfopSetFb('✅ 已对 ' + st.length + ' / ' + t.length + ' 步，下一步：' + mFollowFmt(t[st.length]), '#1a7fd2');
+  }
+}
 
 /* 按思路把解法在"还原思路"面板里的 3D 预览上动画演示一遍（从当前打乱态还原） */
 function demoCfopThink(){
@@ -466,9 +548,10 @@ function demoCfopThink(){
   if (!pracScrambleToks || !pracScrambleToks.length){ toast('请先点「🤖 程序打乱并给思路」，再演示'); return; }
   const host = $('cfop-3d');
   if (!host){ toast('请先打开「还原思路」面板'); return; }
-  /* 从"当前打乱态"开始，正向套用解法 → 复原 */
-  let cube = { U:pracCube.U.slice(), R:pracCube.R.slice(), F:pracCube.F.slice(),
-               D:pracCube.D.slice(), L:pracCube.L.slice(), B:pracCube.B.slice() };
+  /* 始终从"标准打乱态"开始演示，保证每次都干净复位、不走样（不依赖 pracCube 当前是否被动过） */
+  const start = cfopThinkStart || pracCube;
+  let cube = { U:start.U.slice(), R:start.R.slice(), F:start.F.slice(),
+               D:start.D.slice(), L:start.L.slice(), B:start.B.slice() };
   drawCube(host, cube, {});
   const M = cfopThinkMeta || { pLL: sol.length, pOLL: sol.length };
   const total = sol.length;

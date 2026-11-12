@@ -199,18 +199,17 @@ function ganGen2Parse(bits, st, out) {
     }
     /* diff 为 0（无新步）或 >2（计数错位/历史缓冲）：只重同步，不放动作 */
     st.seen = true;
-  } else if (eventType === 0x04) {    /* 状态/电量包：旧 dec[13] 常是固定标识位会误报 13%，改用 dec[17] 并做稳定性校验 */
-    const lvl = parseInt(bits.substr(17 * 8, 8), 2);
-    if (lvl >= 1 && lvl <= 100){
-      if (st.batLast == null || Math.abs(lvl - st.batLast) <= 25){
-        st.batStable = (st.batStable || 0) + 1;
-        st.batLast = lvl;
-        if (st.batStable >= 2) out.push({ type: 'BATTERY', level: lvl });  /* 连续两帧一致才采信，杜绝单帧误读 */
-      } else { st.batLast = lvl; st.batStable = 1; }
-    }
+  } else if (eventType === 0x04) {    /* 状态包：经验上这里没有可靠的独立电量字节（旧代码读 dec[13]/dec[17] 都误报过 13%）。
+                                         只用于"已同步"判定，电量统一交给 0x09 权威包，避免假低电量。 */
     st.seen = true;
-  } else if (eventType === 0x09) {    /* BATTERY（权威，直接采信） */
-    out.push({ type: 'BATTERY', level: Math.min(ganBitWord(bits, 8, 8), 100) });
+  } else if (eventType === 0x09) {    /* BATTERY 权威包：byte1 为电量(1~100)。需连续稳定才采信，杜绝单帧误读 */
+    const lvl = Math.min(ganBitWord(bits, 8, 8), 100);
+    if (lvl >= 1 && lvl <= 100){
+      if (st.batLast == null) { st.batLast = lvl; st.batStable = 1; }
+      else if (Math.abs(lvl - st.batLast) <= 3) { st.batStable = (st.batStable || 0) + 1; st.batLast = lvl; }
+      else { st.batLast = lvl; st.batStable = 1; }
+      if (st.batStable >= 2) out.push({ type: 'BATTERY', level: lvl });  /* 连续两帧一致才上报 */
+    }
     st.seen = true;
   } else if (eventType === 0x0D) {    /* DISCONNECT */
     out.push({ type: 'DISCONNECT' });
@@ -313,12 +312,16 @@ let ganGyroRef = null;             /* 基准朝向：首条 0x1 包作为 0°，
 let ganGyroLogT = 0;               /* 监测采样节流时间戳 */
 let ganGyroOn   = true;             /* 整体旋转联动开关（误判/太灵敏时可一键关） */
 let ganGyroSens = 0.5;              /* 灵敏度 0~1.5（App 内可调；0=不动，越大越跟手） */
+let ganGyroPrevDelta = [0,0,0];     /* 上一帧各轴增量（持续判定用） */
+let ganGyroSustain   = [0,0,0];     /* 各轴"连续同方向超阈值"计数（去抖） */
 /* 可调参数（真机封包日志核对后微调） */
 const GYRO_OFF   = [2, 4, 6];       /* 三个 int16 在解密包里的字节起点（小端） */
 const GYRO_SCALE = 0.06;            /* 每单位 ≈ 0.06°；真机微调 */
 const GYRO_AXES  = ['x', 'y', 'z']; /* 三个 int16 分别对应屏幕的哪根轴 */
 const GYRO_SIGN  = [1, 1, 1];       /* 必要时取 -1 翻转某根轴 */
-const GYRO_DEADZONE = 12;           /* 死区：单帧原始抖动小于此值视为静止，不转（治"静置乱转"） */
+const GYRO_DEADZONE = 20;           /* 死区：单帧原始抖动小于此值视为静止（治"静置乱转"） */
+const GYRO_SUSTAIN  = 2;            /* 同一方向需连续 N 帧超阈值才算"真在转"，滤掉偶发抖动 */
+const GYRO_MAXSTEP  = 25;           /* 单帧角度上限(°)：超过即视为字节误读，丢弃该轴 */
 function ganReadGyroRaw(bits){
   return GYRO_OFF.map(off => {
     const lo = ganBitWord(bits, off*8, 8);
@@ -328,21 +331,29 @@ function ganReadGyroRaw(bits){
     return v;
   });
 }
+/* 整魔方手腕旋转：增量式解码（相对上一帧），只取"持续同方向"的变化，
+   加死区 + 限幅 + 单帧尖峰丢弃，彻底消除"静置也乱转 / 色块乱飞"。 */
 function ganDecodeGyro(bits){
   const raw = ganReadGyroRaw(bits);
-  if (!ganGyroRef){ ganGyroRef = raw.slice(); return { rot:{x:0,y:0,z:0}, raw }; }  /* 首帧只建基线，无增量 */
+  if (!ganGyroRef){ ganGyroRef = raw.slice(); ganGyroPrevDelta = [0,0,0]; ganGyroSustain = [0,0,0];
+                    return { rot:{x:0,y:0,z:0}, raw }; }  /* 首帧只建基线，无增量 */
   const d = [raw[0]-ganGyroRef[0], raw[1]-ganGyroRef[1], raw[2]-ganGyroRef[2]];
   ganGyroRef = raw.slice();
   const scale = GYRO_SCALE * (ganGyroSens > 0 ? ganGyroSens : 0);
   const rot = { x:0, y:0, z:0 };
   for (let i=0;i<3;i++){
     let v = d[i];
-    if (Math.abs(v) < GYRO_DEADZONE) v = 0;            /* 死区：静置噪声不转 */
+    if (Math.abs(v) < GYRO_DEADZONE){ v = 0; ganGyroSustain[i] = 0; }   /* 死区：静置噪声直接归零 */
+    else if (Math.sign(v) === Math.sign(ganGyroPrevDelta[i])) ganGyroSustain[i]++;  /* 同方向持续 */
+    else ganGyroSustain[i] = 1;                                           /* 反向/首帧：重新计数 */
+    if (ganGyroSustain[i] < GYRO_SUSTAIN) v = 0;                         /* 未持续够帧数 → 抖动丢弃 */
+    if (Math.abs(v * scale) > GYRO_MAXSTEP) v = 0;                       /* 单帧尖峰（疑似误读）丢弃 */
+    ganGyroPrevDelta[i] = v;
     rot[GYRO_AXES[i]] = v * scale * GYRO_SIGN[i];
   }
   return { rot, raw };
 }
-function ganResetGyroBase(){ ganGyroRef = null; }   /* 重新以当前朝向为基准（对齐用） */
+function ganResetGyroBase(){ ganGyroRef = null; ganGyroPrevDelta = [0,0,0]; ganGyroSustain = [0,0,0]; }
 
 /* ---------------- 实时封包记录（定位"整转误判成单面"用） ----------------
    真机连上后逐条记录魔方发来的原始数据，便于在 iPad 上直接看出：
@@ -516,6 +527,7 @@ async function pracConnectGAN() {
         : (svc === BLE.GAN_GEN4_SERVICE ? 4 : 2));
   ganParseState = { lastSerial: -1, seen: false };
   ganBattery = -1;
+  { const gb = $('gan-batt'); if (gb) gb.textContent = '🔋 电量：未知'; }
 
   /* 请求一次面块状态：GAN 协议必须先同步状态，之后才上报转动 */
   try {
@@ -584,14 +596,18 @@ function onGanPacket(bytes) {
       const f = ganFaceMap[faceIdx] || GAN_FACE[faceIdx];
       /* 方向：0=顺时针 1=逆时针 2=180° */
       const label = f + (ev.direction === 2 ? '2' : (ev.direction === 1 ? "'" : ''));
-      if (formulaFollow && formulaFollow.active) formulaFollowMove(label);  /* 公式跟练：逐步检查 */
+      if (cfopFollow && cfopFollow.active) cfopFollowMove(label);            /* 还原思路模块跟练优先 */
+      else if (formulaFollow && formulaFollow.active) formulaFollowMove(label);  /* 公式跟练：逐步检查 */
       else pracDo(label);                                                  /* 否则驱动实战练习魔方 */
     } else if (ev.type === 'BATTERY') {
       if (ev.level !== ganBattery) {
         ganBattery = ev.level;
         const b = $('gan-batt');
-        if (b) b.textContent = '🔋 电量：' + ganBattery + '%' + (ganBattery <= 15 ? '（偏低，建议换电池）' : '');
-        if (ganBattery <= 15) toast('🔋 魔方电量低了（' + ganBattery + '%），该换电池啦');
+        /* 只有"稳定且确实很低"才报警，避免单帧误读狂弹提示 */
+        const low = ganBattery > 0 && ganBattery <= 15;
+        if (b) b.textContent = (ganBattery > 0 ? '🔋 电量：' + ganBattery + '%' : '🔋 电量：未知')
+          + (low ? '（偏低，建议换电池）' : '');
+        if (low) toast('🔋 魔方电量低了（' + ganBattery + '%），该换电池啦');
       }
     } else if (ev.type === 'GYRO') {
       /* 整魔方手腕旋转：解成"这一刻转了多少"，增量叠加到屏幕（仅渲染，不动贴纸） */
@@ -770,6 +786,7 @@ async function ganReconnect(handle) {
         : (svc === BLE.GAN_GEN4_SERVICE ? 4 : 2));
   ganParseState = { lastSerial: -1, seen: false };
   ganBattery = -1;
+  { const gb = $('gan-batt'); if (gb) gb.textContent = '🔋 电量：未知'; }
   try {
     const cmd = ganCommand(ganGen, 'REQUEST_FACELETS');
     if (cmd) await ganConn.write(ganEnc.encrypt(cmd));
