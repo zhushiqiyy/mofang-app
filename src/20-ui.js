@@ -34,7 +34,9 @@ function loadStore(){
   s.notes = s.notes || { streak:0, best:0 };
   s.imagine = s.imagine || { count:0 };
   s.training = s.training || [];     /* 训练数据：实战复原 / 公式跟练 / 打乱练习等 */
-  s.cloud = s.cloud || { url:'', auto:false };  /* 云端上传配置（endpoint 由用户填） */
+  /* 云端配置：支持 GitHub 仓库（默认）或自定义服务器 */
+  s.cloud = s.cloud || { mode:'github', url:'', owner:'zhushiqiyy', repo:'mofang-data',
+                         path:'training-data.json', branch:'main', token:'', auto:false, lastRaw:'' };
   return s;
 }
 function saveStore(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch(e){} }
@@ -68,6 +70,25 @@ function pushLog(txt){
   if (store.log.length > 60) store.log.length = 60;
   saveStore();
 }
+/* UTF-8 安全的 base64（GitHub Contents API 要求 base64 文本） */
+function b64encodeUtf8(str){
+  if (typeof TextEncoder !== 'undefined'){
+    const bytes = new TextEncoder().encode(str);
+    let bin = '';
+    for (let i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+  return btoa(unescape(encodeURIComponent(str)));
+}
+function b64decodeUtf8(b64){
+  const bin = atob((b64||'').replace(/\s/g,''));
+  if (typeof TextDecoder !== 'undefined'){
+    const bytes = new Uint8Array(bin.length);
+    for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+  return decodeURIComponent(escape(bin));
+}
 /* 记录一条训练数据（实战复原 / 公式跟练 / 打乱练习……）。供本地查看、导出、云端上传。 */
 function recordTraining(ev){
   store.training = store.training || [];
@@ -75,6 +96,17 @@ function recordTraining(ev){
   store.training.push(ev);
   if (store.training.length > 500) store.training.shift();
   saveStore();
+  maybeAutoUpload();
+}
+/* 开启"自动上传"时，有新记录则节流上传到 GitHub（最多每 8 秒一次） */
+let __autoUpT = 0;
+function maybeAutoUpload(){
+  const c = store.cloud;
+  if (!c || c.mode !== 'github' || !c.auto) return;
+  const now = Date.now();
+  if (now - __autoUpT < 8000) return;
+  __autoUpT = now;
+  uploadGithub(true);
 }
 function starTotal(){
   let n = 0;
@@ -1032,9 +1064,20 @@ function renderData(){
     '实战复原 <b>' + (cnt.practice||0) + '</b> 次 · 平均 <b>' + avg.toFixed(1) + '</b> 秒 · 最快 <b>' + best.toFixed(1) + '</b> 秒<br>' +
     '公式跟练 <b>' + (cnt.formula||0) + '</b> 次 · 打乱练习 <b>' + (cnt.scramble||0) + '</b> 次 · 对战 <b>' + (cnt.battle||0) + '</b> 次';
 
-  /* 云端地址回填 */
-  const urlIn = $('data-url');
-  if (urlIn && store.cloud) urlIn.value = store.cloud.url || '';
+  /* 云端配置回填 */
+  const c = store.cloud || {};
+  if ($('cloud-mode')) $('cloud-mode').value = c.mode || 'github';
+  if ($('gh-owner')) $('gh-owner').value = c.owner || 'zhushiqiyy';
+  if ($('gh-repo')) $('gh-repo').value = c.repo || 'mofang-data';
+  if ($('gh-path')) $('gh-path').value = c.path || 'training-data.json';
+  if ($('gh-branch')) $('gh-branch').value = c.branch || 'main';
+  if ($('gh-token')) $('gh-token').value = c.token || '';
+  if ($('gh-auto')) $('gh-auto').checked = !!c.auto;
+  if ($('data-url')) $('data-url').value = c.url || '';
+  if (typeof onCloudMode === 'function') onCloudMode();
+  if (c.lastRaw && $('gh-raw')) $('gh-raw').innerHTML =
+    '<div class="rawlink">上次上传的原始数据链接（公开仓库我可直接读取）：<br><code>' + c.lastRaw +
+    '</code> <button class="btn ghost sm" onclick="copyRawLink()">📋 复制</button></div>';
 
   /* 记录列表 */
   const list = $('data-list');
@@ -1069,26 +1112,115 @@ function renderData(){
   adv.innerHTML = tips.map(x => '· ' + x).join('<br>');
 }
 
+function onCloudMode(){
+  const m = (($('cloud-mode')||{}).value) || 'github';
+  const isGh = m === 'github';
+  if ($('cloud-github')) $('cloud-github').style.display = isGh ? '' : 'none';
+  if ($('cloud-url')) $('cloud-url').style.display = isGh ? 'none' : '';
+}
+function ghRawUrl(){
+  const c = store.cloud || {};
+  return 'https://raw.githubusercontent.com/' + (c.owner||'zhushiqiyy') + '/' + (c.repo||'mofang-data') +
+         '/' + (c.branch||'main') + '/' + (c.path||'training-data.json');
+}
 function saveDataCloud(){
   store.cloud = store.cloud || {};
-  const v = ($('data-url').value || '').trim();
-  store.cloud.url = v;
+  store.cloud.mode = (($('cloud-mode')||{}).value) || 'github';
+  if (store.cloud.mode === 'github'){
+    store.cloud.owner  = ($('gh-owner').value||'').trim() || 'zhushiqiyy';
+    store.cloud.repo   = ($('gh-repo').value||'').trim() || 'mofang-data';
+    store.cloud.path   = ($('gh-path').value||'').trim() || 'training-data.json';
+    store.cloud.branch = ($('gh-branch').value||'').trim() || 'main';
+    store.cloud.token  = ($('gh-token').value||'').trim();
+    store.cloud.auto   = !!($('gh-auto')||{}).checked;
+  } else {
+    store.cloud.url = ($('data-url').value||'').trim();
+  }
   saveStore();
-  $('data-cloud-msg').textContent = v ? '✅ 已保存上传地址。' : '已清空上传地址（只本地保存）。';
+  $('data-cloud-msg').textContent = '✅ 已保存云端配置。';
 }
 function uploadData(){
-  const url = (store.cloud && store.cloud.url) || ($('data-url').value||'').trim();
-  if (!url){ $('data-cloud-msg').textContent = '⚠️ 还没填上传地址，已自动导出 JSON 到本机（可发给我排查）。'; exportData(); return; }
-  $('data-cloud-msg').textContent = '☁️ 正在上传…';
-  const payload = { app:'cfop-kids', exportedAt: Date.now(), data: store.training };
-  fetch(url, {
-    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
-  }).then(r => {
-    $('data-cloud-msg').textContent = r.ok ? '✅ 上传成功！' : ('⚠️ 服务器返回 ' + r.status + '，请检查接口。');
+  const m = (store.cloud && store.cloud.mode) || 'github';
+  if (m === 'url'){
+    const url = (store.cloud && store.cloud.url) || ($('data-url').value||'').trim();
+    if (!url){ $('data-cloud-msg').textContent = '⚠️ 还没填上传地址，已自动导出 JSON 到本机。'; exportData(); return; }
+    $('data-cloud-msg').textContent = '☁️ 正在上传…';
+    fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ app:'cfop-kids', exportedAt:Date.now(), data: store.training }) })
+      .then(r => { $('data-cloud-msg').textContent = r.ok ? '✅ 上传成功！' : ('⚠️ 服务器返回 ' + r.status); })
+      .catch(e => { $('data-cloud-msg').textContent = '⚠️ 上传失败：' + (e&&e.message||e); exportData(); });
+  } else {
+    uploadGithub(false);
+  }
+}
+/* 把训练数据写入 GitHub 仓库里的一个 JSON 文件（即"云端数据库"）。
+   用 GitHub Contents API：先取旧文件合并、再写回。静默模式（auto=true）失败不弹导出。 */
+function uploadGithub(silent){
+  const c = store.cloud;
+  if (!c || !c.owner || !c.repo){ if(!silent) $('data-cloud-msg').textContent = '⚠️ 请先填 GitHub 用户名和仓库名（并保存配置）。'; return; }
+  if (!c.token){ if(!silent) $('data-cloud-msg').textContent = '⚠️ 需要个人访问令牌（PAT）。在令牌框粘贴后保存配置。'; return; }
+  if (!silent) $('data-cloud-msg').textContent = '☁️ 正在上传到 GitHub…';
+  const path = c.path || 'training-data.json';
+  const branch = c.branch || 'main';
+  const api = 'https://api.github.com/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo) +
+              '/contents/' + encodeURIComponent(path) + '?ref=' + encodeURIComponent(branch);
+  const headers = { 'Authorization': 'Bearer ' + c.token, 'Accept': 'application/vnd.github+json' };
+  const buildPayload = (existing) => {
+    let data = store.training.slice();
+    if (existing && Array.isArray(existing.data)){
+      const seen = {}; data.forEach(e => seen[e.t] = 1);
+      existing.data.forEach(e => { if (!seen[e.t]) data.push(e); });
+    }
+    return { app:'cfop-kids', exportedAt: Date.now(), count: data.length, data };
+  };
+  fetch(api, { headers }).then(r => {
+    if (r.status === 404) return { sha:null, payload: buildPayload(null) };
+    if (!r.ok) throw new Error('读取失败 ' + r.status);
+    return r.json().then(j => {
+      let prev = null;
+      try { prev = j.content ? JSON.parse(b64decodeUtf8(j.content)) : null; } catch(e){}
+      return { sha: j.sha, payload: buildPayload(prev) };
+    });
+  }).then(({sha, payload}) => {
+    const body = { message: '魔方训练数据更新 ' + new Date().toISOString(),
+                   content: b64encodeUtf8(JSON.stringify(payload, null, 2)), branch };
+    if (sha) body.sha = sha;
+    return fetch(api, { method:'PUT', headers: Object.assign({'Content-Type':'application/json'}, headers),
+                        body: JSON.stringify(body) }).then(r => { if (!r.ok) throw new Error('写入失败 ' + r.status); return r.json(); });
+  }).then(() => {
+    const raw = ghRawUrl();
+    store.cloud.lastRaw = raw; saveStore();
+    if (!silent){
+      $('data-cloud-msg').textContent = '✅ 已上传到 GitHub！把下面链接发我，我就能直接看数据：';
+      $('gh-raw').innerHTML = '<div class="rawlink">原始数据链接（仓库设为公开后我可直接读取）：<br><code>' + raw +
+        '</code> <button class="btn ghost sm" onclick="copyRawLink()">📋 复制</button></div>';
+    }
   }).catch(e => {
-    $('data-cloud-msg').textContent = '⚠️ 上传失败：' + (e && e.message || e) + '（离线或地址不对？已自动改为导出 JSON 到本机）';
-    exportData();
+    if (!silent){
+      $('data-cloud-msg').textContent = '⚠️ 上传失败：' + (e && e.message || e) +
+        '。常见原因：令牌无权限 / 仓库不存在 / 私有库需设为公开我才能看。已改为导出 JSON 到本机。';
+      exportData();
+    }
   });
+}
+/* 用当前令牌一键新建一个公开仓库当云库（无需离开 App） */
+function createGhRepo(){
+  const c = store.cloud;
+  if (!c || !c.token){ $('data-cloud-msg').textContent = '⚠️ 先填令牌才能建仓库。'; return; }
+  const repo = (c.repo || 'mofang-data');
+  $('data-cloud-msg').textContent = '🔧 正在创建仓库 ' + repo + ' …';
+  fetch('https://api.github.com/user/repos', {
+    method:'POST',
+    headers: Object.assign({'Content-Type':'application/json','Authorization':'Bearer '+c.token,'Accept':'application/vnd.github+json'}),
+    body: JSON.stringify({ name: repo, private: false, auto_init: true, description: '魔方训练数据云库' })
+  }).then(r => { if (!r.ok) throw new Error('状态 ' + r.status); return r.json(); })
+    .then(j => { $('data-cloud-msg').textContent = '✅ 仓库已创建：' + j.full_name + '（已设为公开，方便把链接发我）。现在点「上传」即可。'; })
+    .catch(e => { $('data-cloud-msg').textContent = '⚠️ 建仓库失败：' + (e && e.message || e) + '。请确认令牌有 repo 权限，或到 github.com 手动新建同名仓库。'; });
+}
+function copyRawLink(){
+  const raw = (store.cloud && store.cloud.lastRaw) || ghRawUrl();
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(raw).then(()=>toast('已复制原始链接')).catch(()=>toast(raw));
+  } else { toast(raw); }
 }
 /* 把训练数据以纯文本弹窗展示，可长按复制或点「复制」发给我排查 */
 function copyTraining(){

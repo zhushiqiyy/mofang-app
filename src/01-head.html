@@ -402,6 +402,11 @@
   /* ============ 魔方 3D 视图尺寸 + 光泽/全息扫光层 ============ */
   svg.cube3d{ width:100%; height:100%; display:block; touch-action:none; }
   #prac-3d, #sense-3d, #m-3d, #cfop-3d{ width:100%; max-width:320px; aspect-ratio:1/1; margin:0 auto; }
+  .gh-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .inp{ width:100%; padding:10px; border-radius:10px; border:1px solid var(--line); font-size:14px; box-sizing:border-box; }
+  .rawlink{ background:#f3f7ff; border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:12px; line-height:1.6; }
+  .rawlink code{ word-break:break-all; color:#0a58ca; }
+  @media(max-width:420px){ .gh-grid{ grid-template-columns:1fr; } }
   /* 扫光带：被魔方轮廓裁剪，贴纸上方滑动；光泽=白光带，全息=彩虹带(color-dodge) */
   .cube-sheen{ pointer-events:none; }
   .sheen-band{ mix-blend-mode:screen; will-change:transform; }

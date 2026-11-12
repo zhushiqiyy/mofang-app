@@ -381,19 +381,43 @@
   </div>
 
   <div class="card">
-    <h3>☁️ 云端上传</h3>
-    <div class="sub" style="line-height:1.8;">把上传地址（服务器接收接口）填在下面。点「上传」会把训练数据以 JSON 发过去。没有服务器也能先<b>本地导出</b>。</div>
-    <input id="data-url" type="text" placeholder="https://你的服务器/upload  （没有可留空）"
-      style="width:100%;margin-top:10px;padding:10px;border-radius:10px;border:1px solid var(--line);font-size:15px;">
-    <div class="row center" style="margin-top:10px;gap:8px;">
-      <button class="btn alt sm" onclick="saveDataCloud()">💾 保存地址</button>
-      <button class="btn blue sm" onclick="uploadData()">☁️ 上传到云端</button>
+    <h3>☁️ 云端数据库（GitHub）</h3>
+    <div class="sub" style="line-height:1.8;">把数据直接存进你的 GitHub 仓库（一个 JSON 文件当数据库），联网时上传。仓库设为<b>公开</b>后，把"原始数据链接"发我，我就能直接读取、帮你定位问题——不用再手动导出文件。</div>
+    <label class="row" style="margin-top:10px;gap:8px;align-items:center;font-size:14px;">模式：
+      <select id="cloud-mode" onchange="onCloudMode()" style="padding:8px;border-radius:8px;border:1px solid var(--line);">
+        <option value="github">GitHub 仓库（推荐）</option>
+        <option value="url">自定义服务器</option>
+      </select>
+    </label>
+
+    <div id="cloud-github" style="margin-top:10px;">
+      <div class="gh-grid">
+        <input id="gh-owner" class="inp" placeholder="GitHub 用户名（如 zhushiqiyy）">
+        <input id="gh-repo" class="inp" placeholder="仓库名（默认 mofang-data）">
+        <input id="gh-path" class="inp" placeholder="文件路径（默认 training-data.json）">
+        <input id="gh-branch" class="inp" placeholder="分支（默认 main）">
+        <input id="gh-token" class="inp" type="password" placeholder="个人访问令牌 PAT（仅该仓库 Contents 读写）" style="grid-column:1 / -1;">
+      </div>
+      <div class="row center" style="margin-top:10px;gap:10px;flex-wrap:wrap;">
+        <button class="btn alt sm" onclick="createGhRepo()">➕ 一键新建仓库</button>
+        <label style="font-size:13px;"><input type="checkbox" id="gh-auto"> 有新记录自动上传</label>
+      </div>
+    </div>
+
+    <div id="cloud-url" style="display:none;margin-top:10px;">
+      <input id="data-url" class="inp" type="text" placeholder="https://你的服务器/upload （没有可留空）">
+    </div>
+
+    <div class="row center" style="margin-top:12px;gap:8px;flex-wrap:wrap;">
+      <button class="btn blue sm" onclick="uploadData()">☁️ 上传</button>
+      <button class="btn alt sm" onclick="saveDataCloud()">💾 保存配置</button>
       <button class="btn alt sm" onclick="exportData()">⬇️ 导出 JSON</button>
       <button class="btn ghost sm" onclick="exportGanLog()">⬇️ 导出封包日志</button>
       <button class="btn ghost sm" onclick="copyTraining()">📋 复制数据</button>
       <button class="btn ghost sm" onclick="clearTraining()">清空</button>
     </div>
     <div id="data-cloud-msg" class="sub" style="margin-top:8px;min-height:18px;"></div>
+    <div id="gh-raw" style="margin-top:8px;"></div>
   </div>
 
   <div class="card">
