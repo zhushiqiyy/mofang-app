@@ -285,6 +285,28 @@ let ganFaceletsTimer = null;
 let ganLastHandle = null;           /* 记住上次连过的设备，用于前后台自动重连 */
 let ganBackgroundRelease = false;   /* 后台主动断开标记（避免误报"断开了"） */
 
+/* ---------------- 实时封包记录（定位"整转误判成单面"用） ----------------
+   真机连上后逐条记录魔方发来的原始数据，便于在 iPad 上直接看出：
+   单面拧 → 出现哪种 type；整魔方手腕旋转 → 出现哪种 type（多半是朝向/陀螺仪信号）。 */
+let ganRawLog = [];
+let ganLogOn = false;
+function ganLogRefreshBtn() {
+  const b = document.querySelector('[onclick="ganLogToggle()"]');
+  if (b) b.textContent = ganLogOn ? '⏸ 停止记录' : '▶ 开始记录';
+}
+function ganLogPush(rawHex, decHex, info) {
+  if (!ganLogOn) return;
+  const t = new Date();
+  const ts = ('0' + t.getMinutes()).slice(-2) + ':' + ('0' + t.getSeconds()).slice(-2) + '.' + ('00' + t.getMilliseconds()).slice(-3);
+  ganRawLog.push('[' + ts + '] ' + info + '\n   raw ' + rawHex + '\n   dec ' + decHex);
+  if (ganRawLog.length > 160) ganRawLog.shift();
+  const el = $('gan-rawlog');
+  if (el) { el.textContent = ganRawLog.join('\n'); el.scrollTop = el.scrollHeight; }
+}
+function ganLogToggle() { ganLogOn = !ganLogOn; ganLogRefreshBtn(); toast(ganLogOn ? '已开始记录封包' : '已停止记录'); }
+function ganLogClear() { ganRawLog = []; const el = $('gan-rawlog'); if (el) el.textContent = ''; }
+function ganLogAutoStart() { ganLogOn = true; ganLogRefreshBtn(); }
+
 function ganSetStatus(html) {
   const e = $('gan-status');
   if (e) e.innerHTML = html;
@@ -420,22 +442,45 @@ async function pracConnectGAN() {
   ganSetStatus('✅ 已连接 <b>' + (handle.name || '魔方') + '</b>！<br>' +
                '现在拧真魔方，屏幕上的魔方会跟着转，并自动开始计时。');
   toast('已连接，拧一下试试');
+  ganLogAutoStart();   /* 连上即自动记录封包，方便定位"整转误判成单面" */
 
   if (isSolved(pracCube) && currentPage === 'practice') pracScramble();
 }
 
-/* 数据包：解密 → 解析 → 应用 */
+/* 数据包：解密 → 解析 → 记录 → 应用 */
 function onGanPacket(bytes) {
   if (!ganEnc) return;
+  const rawHex = BLE.bytesToHex(bytes);
   let plain;
-  try { plain = ganEnc.decrypt(bytes); } catch (e) { return; }
+  try { plain = ganEnc.decrypt(bytes); } catch (e) { ganLogPush(rawHex, '(解密失败)', '解密失败: ' + (e && e.message || e)); return; }
+  const decHex = BLE.bytesToHex(plain);
   const bits = ganBits(plain);
+  /* Gen2 事件类型在前 4 位；Gen3/Gen4 在前 8 位 */
+  const et = (ganGen === 2) ? ganBitWord(bits, 0, 4) : ganBitWord(bits, 0, 8);
   const out = [];
   try {
     if (ganGen === 2) ganGen2Parse(bits, ganParseState, out);
     else if (ganGen === 3) ganGen3Parse(bits, ganParseState, out);
     else ganGen4Parse(bits, ganParseState, out);
-  } catch (e) { return; }
+  } catch (e) {}
+
+  /* 记录：把这一包是什么讲清楚（单面拧 vs 整转靠 type 区分） */
+  let info = 'type=0x' + et.toString(16);
+  if (out.length) {
+    info += ' ' + out.map(ev => {
+      if (ev.type === 'MOVE') {
+        const f = ganFaceMap[ev.face] || GAN_FACE[ev.face];
+        return 'MOVE ' + f + (ev.direction === 2 ? '2' : (ev.direction === 1 ? "'" : ''));
+      }
+      if (ev.type === 'BATTERY') return 'BATTERY ' + ev.level + '%';
+      if (ev.type === 'DISCONNECT') return 'DISCONNECT';
+      if (ev.type === 'FACELETS') return 'FACELETS';
+      return ev.type;
+    }).join(' ');
+  } else {
+    info += ' (未识别为 MOVE/FACELETS/BATTERY/DISCONNECT)';
+  }
+  ganLogPush(rawHex, decHex, info);
 
   for (const ev of out) {
     if (ev.type === 'MOVE') {
@@ -619,6 +664,7 @@ async function ganReconnect(handle) {
   }, 3000);
   ganSetStatus('✅ 已重新连接 <b>' + (handle.name || '魔方') + '</b>！拧真魔方试试。');
   toast('已重新连接');
+  ganLogAutoStart();   /* 连上即自动记录封包 */
   if (isSolved(pracCube) && currentPage === 'practice') pracScramble();
 }
 
