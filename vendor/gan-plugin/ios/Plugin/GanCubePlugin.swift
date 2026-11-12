@@ -15,7 +15,23 @@ import Capacitor
 // ============================================================================
 
 @objc(GanCubePlugin)
-public class GanCubePlugin: CAPPlugin {
+public class GanCubePlugin: CAPPlugin, CAPBridgedPlugin {
+    // CAPBridgedPlugin —— Capacitor 6 必须用这套协议把自己注册给 JS 桥。
+    // 没有它，v6 的桥根本不会发现这个类，PluginHeaders 里就不会有 "GanCube"，
+    // JS 端 registerPlugin('GanCube') 一调用就报 "plugin is not implemented on ios"。
+    public let identifier: String = "GanCubePlugin"
+    public let jsName: String = "GanCube"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "getState", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "initialize", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "scan", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stopScan", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "connect", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "disconnect", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "discover", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "subscribe", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "write", returnType: CAPPluginReturnPromise)
+    ]
 
     private var centralManager: CBCentralManager!
     private var locationManager: CLLocationManager?

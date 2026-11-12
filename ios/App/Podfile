@@ -11,11 +11,15 @@ install! 'cocoapods', :disable_input_output_paths => true
 def capacitor_pods
   pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-  pod 'GanCubePlugin', :path => '../../node_modules/gan-cube-plugin'
 end
 
 target 'App' do
   capacitor_pods
+  # 自研 GAN 魔方蓝牙插件：本地源码（vendor/gan-plugin），不依赖 cap sync 自动检测。
+  # 放在 capacitor_pods 之外，确保 cap sync 重写 Podfile 时不会把它丢掉，
+  # 每次构建都一定会把 GanCubePlugin 编译进 App（否则连类都不存在，
+  # xcodebuild 仍会“成功”，运行时才报 plugin is not implemented）。
+  pod 'GanCubePlugin', :path => '../../vendor/gan-plugin'
   # Add your Pods here
 end
 

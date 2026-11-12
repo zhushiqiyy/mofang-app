@@ -301,6 +301,19 @@ function ganShowEnv(){
 
 function ganSupported() { return BLE.isSupported(); }
 
+/* 蓝牙诊断：在真机上直接显示插件注册 / 蓝牙状态，定位"连不上"的根源 */
+async function ganDiagnose() {
+  ganSetStatus('🔍 正在诊断蓝牙环境…');
+  try {
+    const r = await BLE.diagnose();
+    const text = BLE.diagnoseText(r);
+    ganSetStatus('<b>🔍 蓝牙诊断</b><br><pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;margin:6px 0 0;">' +
+      text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>');
+  } catch (e) {
+    ganSetStatus('诊断出错：' + (e && e.message || e));
+  }
+}
+
 /* ---------------- 连接流程 ---------------- */
 async function pracConnectGAN() {
   if (!ganSupported()) {
@@ -330,17 +343,25 @@ async function pracConnectGAN() {
     });
   } catch (err) {
     const m = (err && err.message) || String(err);
+    let base;
     if (m.indexOf('SCAN_TIMEOUT') === 0) {
-      ganSetStatus('❌ 没找到魔方。' + m.slice('SCAN_TIMEOUT|'.length) +
+      base = '❌ 没找到魔方。' + m.slice('SCAN_TIMEOUT|'.length) +
         '<br>检查：① 拧白面唤醒（白灯闪3下）② 彻底退出 CubeStation ③ 蓝牙已开 '
-        + '④ 设置→隐私与安全性→蓝牙，确认「魔方小将」有权限');
+        + '④ 设置→隐私与安全性→蓝牙，确认「魔方小将」有权限';
     } else if (m === 'BLUETOOTH_OFF') {
-      ganSetStatus('❌ 蓝牙没开：请到「设置 → 蓝牙」里打开');
+      base = '❌ 蓝牙没开：请到「设置 → 蓝牙」里打开';
     } else if (/cancel|NotFound/i.test(m)) {
-      ganSetStatus('已取消。再点一次「连接魔方」试试。');
+      base = '已取消。再点一次「连接魔方」试试。';
     } else {
-      ganSetStatus('❌ 搜索失败：' + m);
+      base = '❌ 搜索失败：' + m;
     }
+    ganSetStatus(base);
+    /* 顺带把诊断结果贴出来，直接在真机上定位根源（插件注册 / 蓝牙状态） */
+    try {
+      const r = await BLE.diagnose();
+      ganSetStatus(base + '<br><br><b>🔍 诊断</b><br>' +
+        BLE.diagnoseText(r).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'));
+    } catch (e) {}
     return;
   }
 

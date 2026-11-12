@@ -358,6 +358,60 @@ const BLE = (function () {
     };
   }
 
+  /* ---------------- 诊断：用 app 定位问题根源 ----------------
+     返回结构化报告，方便在真机上判断到底是哪一层断了：
+       - 平台探测是否正确（native / web）
+       - 原生插件到底有没有被 Capacitor 桥注册（PluginHeaders 里有没有 "GanCube"）
+       - 蓝牙 centralManager 状态
+     这是排查"plugin is not implemented"之类问题最直接的依据。 */
+  async function diagnose() {
+    const report = {
+      kind: kind(),
+      isNative: isNative(),
+      hasCapacitor: !!window.Capacitor,
+      windowGanCubePlugin: !!window.GanCubePlugin,
+      capClient: !!capClient(),
+      pluginHeaders: null,
+      ganInHeaders: false,
+      btState: '（未查询）'
+    };
+    try {
+      if (window.Capacitor && Array.isArray(window.Capacitor.PluginHeaders)) {
+        report.pluginHeaders = window.Capacitor.PluginHeaders.map(h => (h && h.name) || '?');
+        report.ganInHeaders = report.pluginHeaders.indexOf('GanCube') >= 0;
+      } else {
+        report.pluginHeaders = '（无 PluginHeaders —— 桥未注入，或非原生环境）';
+      }
+    } catch (e) {
+      report.pluginHeaders = '读取失败：' + (e && e.message || e);
+    }
+    if (capClient()) {
+      try {
+        const st = await capClient().getState();
+        report.btState = (st && st.state) || '（空）';
+      } catch (e) {
+        report.btState = '查询失败：' + (e && e.message || e);
+      }
+    }
+    return report;
+  }
+
+  function diagnoseText(r) {
+    const lines = [];
+    lines.push('平台：' + r.kind + (r.isNative ? '（原生 App）' : '（网页/浏览器）'));
+    lines.push('Capacitor 运行时：' + (r.hasCapacitor ? '有' : '无'));
+    lines.push('window.GanCubePlugin：' + (r.windowGanCubePlugin ? '有' : '无'));
+    lines.push('Capacitor 已注册的插件：' + (Array.isArray(r.pluginHeaders) ? ('[' + r.pluginHeaders.join(', ') + ']') : r.pluginHeaders));
+    lines.push('桥里是否含 "GanCube"：' + (r.ganInHeaders ? '✅ 有（插件已正确注册）' : '❌ 没有（根因：原生插件没被桥加载）'));
+    lines.push('蓝牙状态：' + r.btState);
+    if (r.kind === 'native' && !r.ganInHeaders) {
+      lines.push('→ 结论：原生插件未注册。请确认构建时 GanCubePlugin 已被编译进 App（Podfile 含 pod GanCubePlugin 且 pod install 成功），且 Swift 类已按 Capacitor 6 的 CAPBridgedPlugin 协议声明。');
+    } else if (r.kind === 'web') {
+      lines.push('→ 此为网页环境，蓝牙走 Web Bluetooth；iPad 浏览器不支持，请用原生 App 版。');
+    }
+    return lines.join('\n');
+  }
+
   /* ---------------- 统一入口 ---------------- */
   async function scan(onStatus) {
     const k = kind();
@@ -375,6 +429,8 @@ const BLE = (function () {
     isSupported: isSupported,
     scan: scan,
     connect: connect,
+    diagnose: diagnose,
+    diagnoseText: diagnoseText,
     macFromManufacturerData: macFromManufacturerData,
     macFromBytesAfterCic: macFromBytesAfterCic,
     nameLooksLikeCube: nameLooksLikeCube,
