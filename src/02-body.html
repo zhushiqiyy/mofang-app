@@ -313,6 +313,7 @@
       <button class="btn ghost sm" onclick="ganDiagnose()">🔍 蓝牙诊断</button>
     </div>
     <div class="okbox" id="gan-status" style="margin-top:12px;">还没连接。</div>
+    <div class="sub" id="gan-batt" style="margin-top:8px;">🔋 电量：等待魔方上报…</div>
   </div>
   <div class="card">
     <h3>📡 实时封包（定位蓝牙问题用）</h3>
@@ -323,8 +324,23 @@
     <div class="row center" style="margin-top:10px;gap:10px;">
       <button class="btn alt sm" onclick="ganLogToggle()">▶ 开始记录</button>
       <button class="btn ghost sm" onclick="ganLogClear()">清空</button>
+      <button class="btn ghost sm" onclick="exportGanLog()">⬇️ 导出封包日志</button>
     </div>
     <div id="gan-rawlog" style="margin-top:10px;max-height:260px;overflow:auto;font-family:monospace;font-size:11px;line-height:1.55;background:#0d1117;color:#9fe6ff;padding:8px 10px;border-radius:8px;white-space:pre-wrap;"></div>
+  </div>
+
+  <div class="card">
+    <h3>🌀 整体旋转联动（手腕整转）</h3>
+    <div class="sub" style="line-height:1.7;">真魔方整只手腕转动时，屏幕魔方跟着整体转。如果觉得<b>太灵敏/乱转</b>或<b>不动</b>，用下面调；仍不准就把「封包日志」导出发我，我按真机数据校准字节。</div>
+    <div class="row center" style="margin-top:10px;gap:8px;">
+      <button class="btn alt sm" id="gan-gyro-toggle" onclick="ganToggleGyro()">⏸ 关闭联动</button>
+      <button class="btn ghost sm" onclick="ganAlignGyro()">🎯 对齐屏幕</button>
+    </div>
+    <div class="row" style="margin-top:10px;align-items:center;gap:8px;">
+      <span class="sub" style="font-size:12.5px;min-width:48px;">灵敏度</span>
+      <input id="gan-gyro-sens" type="range" min="0" max="1.5" step="0.05" value="0.5" style="flex:1;" oninput="ganSetSens(parseFloat(this.value))">
+      <span class="sub" id="gan-gyro-sens-val" style="min-width:34px;">0.50</span>
+    </div>
   </div>
   <div class="card">
     <h3>🔧 校准与归零</h3>
@@ -373,6 +389,8 @@
       <button class="btn alt sm" onclick="saveDataCloud()">💾 保存地址</button>
       <button class="btn blue sm" onclick="uploadData()">☁️ 上传到云端</button>
       <button class="btn alt sm" onclick="exportData()">⬇️ 导出 JSON</button>
+      <button class="btn ghost sm" onclick="exportGanLog()">⬇️ 导出封包日志</button>
+      <button class="btn ghost sm" onclick="copyTraining()">📋 复制数据</button>
       <button class="btn ghost sm" onclick="clearTraining()">清空</button>
     </div>
     <div id="data-cloud-msg" class="sub" style="margin-top:8px;min-height:18px;"></div>

@@ -18,16 +18,17 @@ let pracRotDirty = false;
 function drawPrac(opt){
   drawCube($('prac-3d'), pracCube, Object.assign({ cubeRot: pracCubeRot }, opt || {}));
 }
-function resetPracOrientation(){ pracCubeRot = { x:0, y:0, z:0 }; }
-/* GAN 角度更新后，用 rAF 合帧重绘，避免高频陀螺仪包抖得满屏重画 */
-function applyPracCubeRot(rot){
-  pracCubeRot = rot;
+function resetPracOrientation(){ pracCubeRot = { x:0, y:0, z:0 }; if (typeof ganResetGyroBase === 'function') ganResetGyroBase(); }
+function clampN(v, lo, hi){ return v < lo ? lo : (v > hi ? hi : v); }
+/* 整体旋转：增量叠加 + 限幅（防跑飞），用 rAF 合帧重绘，避免高频陀螺仪包抖得满屏重画 */
+function addPracCubeRot(d){
+  const L = 80;
+  if (typeof d.x === 'number') pracCubeRot.x = clampN(pracCubeRot.x + d.x, -L, L);
+  if (typeof d.y === 'number') pracCubeRot.y = clampN(pracCubeRot.y + d.y, -L, L);
+  if (typeof d.z === 'number') pracCubeRot.z = clampN(pracCubeRot.z + d.z, -L, L);
   if (pracRotDirty) return;
   pracRotDirty = true;
-  requestAnimationFrame(() => {
-    pracRotDirty = false;
-    if ($('prac-3d')) drawPrac();
-  });
+  requestAnimationFrame(() => { pracRotDirty = false; if ($('prac-3d')) drawPrac(); });
 }
 
 const DIFFS = [
@@ -332,6 +333,7 @@ function renderPracLog(){
 
 /* ---------------- 主动接替 / CFOP 还原思路 + 顶层情形识别 ---------------- */
 let cfopThinkSol = null;   /* 当前"还原思路"的完整解法序列（供演示） */
+let cfopThinkMeta = null;  /* 各阶段临界点（供演示时高亮当前阶段） */
 
 /* 底层两层是否已复原（只剩顶层待处理） */
 function isLastLayer(cube){
@@ -410,6 +412,7 @@ function showCfopThink(){
     const st = applyAlg(pracCube, sol.slice(0, i));
     if (st && isTopOriented(st)){ pOLL = i; break; }
   }
+  cfopThinkMeta = { pLL: pLL, pOLL: pOLL };
 
   /* 在 LL-ready 那一刻识别 OLL/PLL 情形（教孩子"看形选招"） */
   const llState = applyAlg(pracCube, sol.slice(0, pLL));
@@ -419,32 +422,36 @@ function showCfopThink(){
   const phaseCards = [];
   phaseCards.push(phaseCard('① 底层十字 + F2L（前两层）',
     sol.slice(0, pLL),
-    '先把白色十字搭好，再把角块和棱块<b>配对</b>一起塞进前两层。前两层搞定后，就只剩顶层了。'));
+    '先把白色十字搭好，再把角块和棱块<b>配对</b>一起塞进前两层。前两层搞定后，就只剩顶层了。', 'cfop-ph-1'));
   phaseCards.push(phaseCard('② OLL · 翻顶面',
     sol.slice(pLL, pOLL),
     ollCase
       ? '此时顶面是 <b>OLL 第' + ollCase.num + '式（' + ollCase.shape + '）</b>，标准公式：<span class="mono">' + ollCase.notation + '</span>。把顶面全部翻成白色。'
-      : '把顶面所有块翻成白色（这就是 OLL）。'));
+      : '把顶面所有块翻成白色（这就是 OLL）。', 'cfop-ph-2'));
   phaseCards.push(phaseCard('③ PLL · 摆顶层',
     sol.slice(pOLL),
     pllCase
       ? '此时顶层是 <b>PLL 第' + pllCase.num + '式（' + pllCase.group + '）</b>，标准公式：<span class="mono">' + pllCase.notation + '</span>。把顶层位置摆正，魔方就复原啦！'
-      : '把顶层位置摆正（这就是 PLL），魔方就复原啦！'));
+      : '把顶层位置摆正（这就是 PLL），魔方就复原啦！', 'cfop-ph-3'));
 
-  let html = '<div class="sub" style="margin-bottom:8px;">这是把刚才的打乱<b>倒回去</b>的一种正确解法。真正比赛里你会换成更短的 CFOP 公式——下面按 <b>十字→F2L→OLL→PLL</b> 四步拆开给你看：</div>';
+  let html = '<div class="viewwrap" style="margin-bottom:10px;"><div id="cfop-3d"></div></div>'
+           + '<div class="viewctrl" id="cfop-viewctrl" style="margin-bottom:8px;"></div>'
+           + '<div class="sub" style="margin-bottom:8px;">这是把刚才的打乱<b>倒回去</b>的一种正确解法。真正比赛里你会换成更短的 CFOP 公式——下面按 <b>十字→F2L→OLL→PLL</b> 四步拆开给你看：</div>';
   html += phaseCards.join('');
   html += '<div class="row center" style="margin-top:12px;gap:8px;">'
         + '<button class="btn blue sm" onclick="demoCfopThink()">▶ 按思路演示一遍</button>'
         + '<button class="btn alt sm" onclick="hideCfopThink()">收起</button></div>';
   panel.style.display = 'block';
   panel.innerHTML = html;
+  drawCube($('cfop-3d'), pracCube, {});
+  if (typeof mountViewCtrl === 'function') mountViewCtrl($('cfop-viewctrl'), () => $('cfop-3d'));
   panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
-function phaseCard(title, toks, tip){
+function phaseCard(title, toks, tip, id){
   const chips = toks.length
     ? '<div class="chunks">' + toks.map(t => '<span class="chunk">' + fmtTok2(t) + '</span>').join('') + '</div>'
     : '<div class="sub">（这步在本解法里为空）</div>';
-  return '<div class="card tight" style="margin-top:10px;background:#f8fbff;border:1px solid var(--line);">'
+  return '<div class="card tight' + (id ? '" id="' + id + '"' : '') + '" style="margin-top:10px;background:#f8fbff;border:1px solid var(--line);">'
     + '<div class="ptitle" style="color:var(--blue);">' + title + ' · ' + toks.length + ' 步</div>'
     + chips
     + '<div class="talk" style="margin-top:6px;">' + tip + '</div>'
@@ -452,20 +459,36 @@ function phaseCard(title, toks, tip){
 }
 function hideCfopThink(){ const p = $('cfop-think'); if (p) p.style.display = 'none'; }
 
-/* 按思路把解法在练习魔方上动画演示一遍 */
+/* 按思路把解法在"还原思路"面板里的 3D 预览上动画演示一遍（从当前打乱态还原） */
 function demoCfopThink(){
-  if (!cfopThinkSol) { showCfopThink(); if (!cfopThinkSol) return; }
-  if (!isSolved(pracCube)) pracReset();   /* 先回到复原态，再正向演示 */
+  if (!cfopThinkSol){ showCfopThink(); if (!cfopThinkSol) return; }
   const sol = cfopThinkSol;
-  let cube = solvedCube();
+  if (!pracScrambleToks || !pracScrambleToks.length){ toast('请先点「🤖 程序打乱并给思路」，再演示'); return; }
+  const host = $('cfop-3d');
+  if (!host){ toast('请先打开「还原思路」面板'); return; }
+  /* 从"当前打乱态"开始，正向套用解法 → 复原 */
+  let cube = { U:pracCube.U.slice(), R:pracCube.R.slice(), F:pracCube.F.slice(),
+               D:pracCube.D.slice(), L:pracCube.L.slice(), B:pracCube.B.slice() };
+  drawCube(host, cube, {});
+  const M = cfopThinkMeta || { pLL: sol.length, pOLL: sol.length };
+  const total = sol.length;
   let i = 0;
   const tick = () => {
-    if (i >= sol.length) { toast('🎉 演示完成，这就是 CFOP 还原思路！'); return; }
+    /* 高亮当前所处阶段（十字+F2L / OLL / PLL） */
+    let ph = i <= M.pLL ? 1 : (i <= M.pOLL ? 2 : 3);
+    [1,2,3].forEach(k => { const el = $('cfop-ph-' + k); if (el) el.classList.toggle('on', k === ph && i < total); });
+    if (i >= total){
+      [1,2,3].forEach(k => { const el = $('cfop-ph-' + k); if (el) el.classList.remove('on'); });
+      toast('🎉 演示完成，这就是 CFOP 还原思路！');
+      drawCube(host, cube, {});
+      return;
+    }
     const t = sol[i++];
-    animateAlg($('prac-3d'), cube, [t], {
-      speed: 2.2,
-      onDone: c => { cube = c; pracCube = c; drawPrac(); refreshPracUI(); tick(); }
+    animateAlg(host, cube, [t], {
+      speed: 2.4,
+      onDone: c => { cube = c; drawCube(host, cube, {}); tick(); }
     });
   };
+  toast('▶ 开始按思路演示（从你现在的打乱态复原）');
   tick();
 }

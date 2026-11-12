@@ -196,6 +196,8 @@
   .chunk.now{border-color:var(--blue); background:#fff; box-shadow:0 0 0 3px rgba(58,122,254,.15);}
   .chunk.ok{background:var(--green); color:#fff;}
   .chunk.bad{background:var(--red); color:#fff; border-color:var(--red);}
+  /* CFOP 还原思路：分阶段高亮当前正在演示的卡片 */
+  .card.tight.on{outline:2.5px solid var(--blue); box-shadow:0 0 0 3px rgba(58,122,254,.18);}
 
   /* 讲解块 */
   .talk{display:flex; flex-direction:column; gap:10px; margin-top:12px;}
@@ -399,7 +401,7 @@
 
   /* ============ 魔方 3D 视图尺寸 + 光泽/全息扫光层 ============ */
   svg.cube3d{ width:100%; height:100%; display:block; touch-action:none; }
-  #prac-3d, #sense-3d, #m-3d{ width:100%; max-width:320px; aspect-ratio:1/1; margin:0 auto; }
+  #prac-3d, #sense-3d, #m-3d, #cfop-3d{ width:100%; max-width:320px; aspect-ratio:1/1; margin:0 auto; }
   /* 扫光带：被魔方轮廓裁剪，贴纸上方滑动；光泽=白光带，全息=彩虹带(color-dodge) */
   .cube-sheen{ pointer-events:none; }
   .sheen-band{ mix-blend-mode:screen; will-change:transform; }

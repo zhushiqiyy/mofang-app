@@ -196,6 +196,8 @@
   .chunk.now{border-color:var(--blue); background:#fff; box-shadow:0 0 0 3px rgba(58,122,254,.15);}
   .chunk.ok{background:var(--green); color:#fff;}
   .chunk.bad{background:var(--red); color:#fff; border-color:var(--red);}
+  /* CFOP 还原思路：分阶段高亮当前正在演示的卡片 */
+  .card.tight.on{outline:2.5px solid var(--blue); box-shadow:0 0 0 3px rgba(58,122,254,.18);}
 
   /* 讲解块 */
   .talk{display:flex; flex-direction:column; gap:10px; margin-top:12px;}
@@ -399,7 +401,7 @@
 
   /* ============ 魔方 3D 视图尺寸 + 光泽/全息扫光层 ============ */
   svg.cube3d{ width:100%; height:100%; display:block; touch-action:none; }
-  #prac-3d, #sense-3d, #m-3d{ width:100%; max-width:320px; aspect-ratio:1/1; margin:0 auto; }
+  #prac-3d, #sense-3d, #m-3d, #cfop-3d{ width:100%; max-width:320px; aspect-ratio:1/1; margin:0 auto; }
   /* 扫光带：被魔方轮廓裁剪，贴纸上方滑动；光泽=白光带，全息=彩虹带(color-dodge) */
   .cube-sheen{ pointer-events:none; }
   .sheen-band{ mix-blend-mode:screen; will-change:transform; }
@@ -763,6 +765,7 @@
       <button class="btn ghost sm" onclick="ganDiagnose()">🔍 蓝牙诊断</button>
     </div>
     <div class="okbox" id="gan-status" style="margin-top:12px;">还没连接。</div>
+    <div class="sub" id="gan-batt" style="margin-top:8px;">🔋 电量：等待魔方上报…</div>
   </div>
   <div class="card">
     <h3>📡 实时封包（定位蓝牙问题用）</h3>
@@ -773,8 +776,23 @@
     <div class="row center" style="margin-top:10px;gap:10px;">
       <button class="btn alt sm" onclick="ganLogToggle()">▶ 开始记录</button>
       <button class="btn ghost sm" onclick="ganLogClear()">清空</button>
+      <button class="btn ghost sm" onclick="exportGanLog()">⬇️ 导出封包日志</button>
     </div>
     <div id="gan-rawlog" style="margin-top:10px;max-height:260px;overflow:auto;font-family:monospace;font-size:11px;line-height:1.55;background:#0d1117;color:#9fe6ff;padding:8px 10px;border-radius:8px;white-space:pre-wrap;"></div>
+  </div>
+
+  <div class="card">
+    <h3>🌀 整体旋转联动（手腕整转）</h3>
+    <div class="sub" style="line-height:1.7;">真魔方整只手腕转动时，屏幕魔方跟着整体转。如果觉得<b>太灵敏/乱转</b>或<b>不动</b>，用下面调；仍不准就把「封包日志」导出发我，我按真机数据校准字节。</div>
+    <div class="row center" style="margin-top:10px;gap:8px;">
+      <button class="btn alt sm" id="gan-gyro-toggle" onclick="ganToggleGyro()">⏸ 关闭联动</button>
+      <button class="btn ghost sm" onclick="ganAlignGyro()">🎯 对齐屏幕</button>
+    </div>
+    <div class="row" style="margin-top:10px;align-items:center;gap:8px;">
+      <span class="sub" style="font-size:12.5px;min-width:48px;">灵敏度</span>
+      <input id="gan-gyro-sens" type="range" min="0" max="1.5" step="0.05" value="0.5" style="flex:1;" oninput="ganSetSens(parseFloat(this.value))">
+      <span class="sub" id="gan-gyro-sens-val" style="min-width:34px;">0.50</span>
+    </div>
   </div>
   <div class="card">
     <h3>🔧 校准与归零</h3>
@@ -823,6 +841,8 @@
       <button class="btn alt sm" onclick="saveDataCloud()">💾 保存地址</button>
       <button class="btn blue sm" onclick="uploadData()">☁️ 上传到云端</button>
       <button class="btn alt sm" onclick="exportData()">⬇️ 导出 JSON</button>
+      <button class="btn ghost sm" onclick="exportGanLog()">⬇️ 导出封包日志</button>
+      <button class="btn ghost sm" onclick="copyTraining()">📋 复制数据</button>
       <button class="btn ghost sm" onclick="clearTraining()">清空</button>
     </div>
     <div id="data-cloud-msg" class="sub" style="margin-top:8px;min-height:18px;"></div>
@@ -3177,7 +3197,7 @@ function saveDataCloud(){
 }
 function uploadData(){
   const url = (store.cloud && store.cloud.url) || ($('data-url').value||'').trim();
-  if (!url){ $('data-cloud-msg').textContent = '⚠️ 还没填上传地址。没有服务器也能「导出 JSON」先保存。'; return; }
+  if (!url){ $('data-cloud-msg').textContent = '⚠️ 还没填上传地址，已自动导出 JSON 到本机（可发给我排查）。'; exportData(); return; }
   $('data-cloud-msg').textContent = '☁️ 正在上传…';
   const payload = { app:'cfop-kids', exportedAt: Date.now(), data: store.training };
   fetch(url, {
@@ -3185,8 +3205,26 @@ function uploadData(){
   }).then(r => {
     $('data-cloud-msg').textContent = r.ok ? '✅ 上传成功！' : ('⚠️ 服务器返回 ' + r.status + '，请检查接口。');
   }).catch(e => {
-    $('data-cloud-msg').textContent = '⚠️ 上传失败：' + (e && e.message || e) + '（离线或地址不对？可改用导出 JSON）';
+    $('data-cloud-msg').textContent = '⚠️ 上传失败：' + (e && e.message || e) + '（离线或地址不对？已自动改为导出 JSON 到本机）';
+    exportData();
   });
+}
+/* 把训练数据以纯文本弹窗展示，可长按复制或点「复制」发给我排查 */
+function copyTraining(){
+  const payload = { app:'cfop-kids', exportedAt: Date.now(), store: { training: store.training, learned: store.learned, battle: store.battle } };
+  const json = JSON.stringify(payload, null, 2);
+  $('sheet').innerHTML =
+    '<div class="sheet-head"><h3>📋 训练数据（复制后发给我）</h3><button class="closex" onclick="closeModal()">✕</button></div>'
+    + '<div class="sub">长按下方文字全选复制，或点「复制」按钮，把内容发给我即可定位问题。</div>'
+    + '<textarea id="copy-box" style="width:100%;height:300px;margin-top:8px;font-family:ui-monospace,monospace;font-size:12px;padding:8px;border-radius:10px;border:1px solid #ccd;">' + json.replace(/</g,'&lt;') + '</textarea>'
+    + '<div class="row center" style="margin-top:10px;gap:8px;"><button class="btn blue sm" onclick="doCopyTraining()">📋 复制</button></div>';
+  $('modal').classList.add('show');
+  setTimeout(() => { const t = $('copy-box'); if (t) t.focus(); }, 50);
+}
+function doCopyTraining(){
+  const t = $('copy-box'); if (!t) return; t.select();
+  try { document.execCommand('copy'); toast('已复制，去粘贴给我'); }
+  catch (e) { toast('请手动长按全选复制'); }
 }
 function exportData(){
   const payload = { app:'cfop-kids', exportedAt: Date.now(), store: { training: store.training, learned: store.learned, battle: store.battle } };
@@ -3849,16 +3887,17 @@ let pracRotDirty = false;
 function drawPrac(opt){
   drawCube($('prac-3d'), pracCube, Object.assign({ cubeRot: pracCubeRot }, opt || {}));
 }
-function resetPracOrientation(){ pracCubeRot = { x:0, y:0, z:0 }; }
-/* GAN 角度更新后，用 rAF 合帧重绘，避免高频陀螺仪包抖得满屏重画 */
-function applyPracCubeRot(rot){
-  pracCubeRot = rot;
+function resetPracOrientation(){ pracCubeRot = { x:0, y:0, z:0 }; if (typeof ganResetGyroBase === 'function') ganResetGyroBase(); }
+function clampN(v, lo, hi){ return v < lo ? lo : (v > hi ? hi : v); }
+/* 整体旋转：增量叠加 + 限幅（防跑飞），用 rAF 合帧重绘，避免高频陀螺仪包抖得满屏重画 */
+function addPracCubeRot(d){
+  const L = 80;
+  if (typeof d.x === 'number') pracCubeRot.x = clampN(pracCubeRot.x + d.x, -L, L);
+  if (typeof d.y === 'number') pracCubeRot.y = clampN(pracCubeRot.y + d.y, -L, L);
+  if (typeof d.z === 'number') pracCubeRot.z = clampN(pracCubeRot.z + d.z, -L, L);
   if (pracRotDirty) return;
   pracRotDirty = true;
-  requestAnimationFrame(() => {
-    pracRotDirty = false;
-    if ($('prac-3d')) drawPrac();
-  });
+  requestAnimationFrame(() => { pracRotDirty = false; if ($('prac-3d')) drawPrac(); });
 }
 
 const DIFFS = [
@@ -4163,6 +4202,7 @@ function renderPracLog(){
 
 /* ---------------- 主动接替 / CFOP 还原思路 + 顶层情形识别 ---------------- */
 let cfopThinkSol = null;   /* 当前"还原思路"的完整解法序列（供演示） */
+let cfopThinkMeta = null;  /* 各阶段临界点（供演示时高亮当前阶段） */
 
 /* 底层两层是否已复原（只剩顶层待处理） */
 function isLastLayer(cube){
@@ -4241,6 +4281,7 @@ function showCfopThink(){
     const st = applyAlg(pracCube, sol.slice(0, i));
     if (st && isTopOriented(st)){ pOLL = i; break; }
   }
+  cfopThinkMeta = { pLL: pLL, pOLL: pOLL };
 
   /* 在 LL-ready 那一刻识别 OLL/PLL 情形（教孩子"看形选招"） */
   const llState = applyAlg(pracCube, sol.slice(0, pLL));
@@ -4250,32 +4291,36 @@ function showCfopThink(){
   const phaseCards = [];
   phaseCards.push(phaseCard('① 底层十字 + F2L（前两层）',
     sol.slice(0, pLL),
-    '先把白色十字搭好，再把角块和棱块<b>配对</b>一起塞进前两层。前两层搞定后，就只剩顶层了。'));
+    '先把白色十字搭好，再把角块和棱块<b>配对</b>一起塞进前两层。前两层搞定后，就只剩顶层了。', 'cfop-ph-1'));
   phaseCards.push(phaseCard('② OLL · 翻顶面',
     sol.slice(pLL, pOLL),
     ollCase
       ? '此时顶面是 <b>OLL 第' + ollCase.num + '式（' + ollCase.shape + '）</b>，标准公式：<span class="mono">' + ollCase.notation + '</span>。把顶面全部翻成白色。'
-      : '把顶面所有块翻成白色（这就是 OLL）。'));
+      : '把顶面所有块翻成白色（这就是 OLL）。', 'cfop-ph-2'));
   phaseCards.push(phaseCard('③ PLL · 摆顶层',
     sol.slice(pOLL),
     pllCase
       ? '此时顶层是 <b>PLL 第' + pllCase.num + '式（' + pllCase.group + '）</b>，标准公式：<span class="mono">' + pllCase.notation + '</span>。把顶层位置摆正，魔方就复原啦！'
-      : '把顶层位置摆正（这就是 PLL），魔方就复原啦！'));
+      : '把顶层位置摆正（这就是 PLL），魔方就复原啦！', 'cfop-ph-3'));
 
-  let html = '<div class="sub" style="margin-bottom:8px;">这是把刚才的打乱<b>倒回去</b>的一种正确解法。真正比赛里你会换成更短的 CFOP 公式——下面按 <b>十字→F2L→OLL→PLL</b> 四步拆开给你看：</div>';
+  let html = '<div class="viewwrap" style="margin-bottom:10px;"><div id="cfop-3d"></div></div>'
+           + '<div class="viewctrl" id="cfop-viewctrl" style="margin-bottom:8px;"></div>'
+           + '<div class="sub" style="margin-bottom:8px;">这是把刚才的打乱<b>倒回去</b>的一种正确解法。真正比赛里你会换成更短的 CFOP 公式——下面按 <b>十字→F2L→OLL→PLL</b> 四步拆开给你看：</div>';
   html += phaseCards.join('');
   html += '<div class="row center" style="margin-top:12px;gap:8px;">'
         + '<button class="btn blue sm" onclick="demoCfopThink()">▶ 按思路演示一遍</button>'
         + '<button class="btn alt sm" onclick="hideCfopThink()">收起</button></div>';
   panel.style.display = 'block';
   panel.innerHTML = html;
+  drawCube($('cfop-3d'), pracCube, {});
+  if (typeof mountViewCtrl === 'function') mountViewCtrl($('cfop-viewctrl'), () => $('cfop-3d'));
   panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
-function phaseCard(title, toks, tip){
+function phaseCard(title, toks, tip, id){
   const chips = toks.length
     ? '<div class="chunks">' + toks.map(t => '<span class="chunk">' + fmtTok2(t) + '</span>').join('') + '</div>'
     : '<div class="sub">（这步在本解法里为空）</div>';
-  return '<div class="card tight" style="margin-top:10px;background:#f8fbff;border:1px solid var(--line);">'
+  return '<div class="card tight' + (id ? '" id="' + id + '"' : '') + '" style="margin-top:10px;background:#f8fbff;border:1px solid var(--line);">'
     + '<div class="ptitle" style="color:var(--blue);">' + title + ' · ' + toks.length + ' 步</div>'
     + chips
     + '<div class="talk" style="margin-top:6px;">' + tip + '</div>'
@@ -4283,21 +4328,37 @@ function phaseCard(title, toks, tip){
 }
 function hideCfopThink(){ const p = $('cfop-think'); if (p) p.style.display = 'none'; }
 
-/* 按思路把解法在练习魔方上动画演示一遍 */
+/* 按思路把解法在"还原思路"面板里的 3D 预览上动画演示一遍（从当前打乱态还原） */
 function demoCfopThink(){
-  if (!cfopThinkSol) { showCfopThink(); if (!cfopThinkSol) return; }
-  if (!isSolved(pracCube)) pracReset();   /* 先回到复原态，再正向演示 */
+  if (!cfopThinkSol){ showCfopThink(); if (!cfopThinkSol) return; }
   const sol = cfopThinkSol;
-  let cube = solvedCube();
+  if (!pracScrambleToks || !pracScrambleToks.length){ toast('请先点「🤖 程序打乱并给思路」，再演示'); return; }
+  const host = $('cfop-3d');
+  if (!host){ toast('请先打开「还原思路」面板'); return; }
+  /* 从"当前打乱态"开始，正向套用解法 → 复原 */
+  let cube = { U:pracCube.U.slice(), R:pracCube.R.slice(), F:pracCube.F.slice(),
+               D:pracCube.D.slice(), L:pracCube.L.slice(), B:pracCube.B.slice() };
+  drawCube(host, cube, {});
+  const M = cfopThinkMeta || { pLL: sol.length, pOLL: sol.length };
+  const total = sol.length;
   let i = 0;
   const tick = () => {
-    if (i >= sol.length) { toast('🎉 演示完成，这就是 CFOP 还原思路！'); return; }
+    /* 高亮当前所处阶段（十字+F2L / OLL / PLL） */
+    let ph = i <= M.pLL ? 1 : (i <= M.pOLL ? 2 : 3);
+    [1,2,3].forEach(k => { const el = $('cfop-ph-' + k); if (el) el.classList.toggle('on', k === ph && i < total); });
+    if (i >= total){
+      [1,2,3].forEach(k => { const el = $('cfop-ph-' + k); if (el) el.classList.remove('on'); });
+      toast('🎉 演示完成，这就是 CFOP 还原思路！');
+      drawCube(host, cube, {});
+      return;
+    }
     const t = sol[i++];
-    animateAlg($('prac-3d'), cube, [t], {
-      speed: 2.2,
-      onDone: c => { cube = c; pracCube = c; drawPrac(); refreshPracUI(); tick(); }
+    animateAlg(host, cube, [t], {
+      speed: 2.4,
+      onDone: c => { cube = c; drawCube(host, cube, {}); tick(); }
     });
   };
+  toast('▶ 开始按思路演示（从你现在的打乱态复原）');
   tick();
 }
 
@@ -4950,11 +5011,17 @@ function ganGen2Parse(bits, st, out) {
     }
     /* diff 为 0（无新步）或 >2（计数错位/历史缓冲）：只重同步，不放动作 */
     st.seen = true;
-  } else if (eventType === 0x04) {    /* 状态/电量包：电量在固定字节（实测 dec[13] = 0~100） */
-    const lvl = parseInt(bits.substr(13 * 8, 8), 2);
-    if (lvl >= 0 && lvl <= 100) out.push({ type: 'BATTERY', level: lvl });
+  } else if (eventType === 0x04) {    /* 状态/电量包：旧 dec[13] 常是固定标识位会误报 13%，改用 dec[17] 并做稳定性校验 */
+    const lvl = parseInt(bits.substr(17 * 8, 8), 2);
+    if (lvl >= 1 && lvl <= 100){
+      if (st.batLast == null || Math.abs(lvl - st.batLast) <= 25){
+        st.batStable = (st.batStable || 0) + 1;
+        st.batLast = lvl;
+        if (st.batStable >= 2) out.push({ type: 'BATTERY', level: lvl });  /* 连续两帧一致才采信，杜绝单帧误读 */
+      } else { st.batLast = lvl; st.batStable = 1; }
+    }
     st.seen = true;
-  } else if (eventType === 0x09) {    /* BATTERY */
+  } else if (eventType === 0x09) {    /* BATTERY（权威，直接采信） */
     out.push({ type: 'BATTERY', level: Math.min(ganBitWord(bits, 8, 8), 100) });
     st.seen = true;
   } else if (eventType === 0x0D) {    /* DISCONNECT */
@@ -5056,11 +5123,14 @@ let ganBackgroundRelease = false;   /* 后台主动断开标记（避免误报"�
    字节布局各代略有差异，先用可调参数读，连上真机后用封包日志核对、微调即可。 */
 let ganGyroRef = null;             /* 基准朝向：首条 0x1 包作为 0°，使屏幕从「对齐」开始 */
 let ganGyroLogT = 0;               /* 监测采样节流时间戳 */
+let ganGyroOn   = true;             /* 整体旋转联动开关（误判/太灵敏时可一键关） */
+let ganGyroSens = 0.5;              /* 灵敏度 0~1.5（App 内可调；0=不动，越大越跟手） */
 /* 可调参数（真机封包日志核对后微调） */
 const GYRO_OFF   = [2, 4, 6];       /* 三个 int16 在解密包里的字节起点（小端） */
 const GYRO_SCALE = 0.06;            /* 每单位 ≈ 0.06°；真机微调 */
 const GYRO_AXES  = ['x', 'y', 'z']; /* 三个 int16 分别对应屏幕的哪根轴 */
 const GYRO_SIGN  = [1, 1, 1];       /* 必要时取 -1 翻转某根轴 */
+const GYRO_DEADZONE = 12;           /* 死区：单帧原始抖动小于此值视为静止，不转（治"静置乱转"） */
 function ganReadGyroRaw(bits){
   return GYRO_OFF.map(off => {
     const lo = ganBitWord(bits, off*8, 8);
@@ -5072,14 +5142,19 @@ function ganReadGyroRaw(bits){
 }
 function ganDecodeGyro(bits){
   const raw = ganReadGyroRaw(bits);
-  if (!ganGyroRef) ganGyroRef = raw.slice();   /* 首次采样当基准，屏幕与真魔方对齐 */
+  if (!ganGyroRef){ ganGyroRef = raw.slice(); return { rot:{x:0,y:0,z:0}, raw }; }  /* 首帧只建基线，无增量 */
+  const d = [raw[0]-ganGyroRef[0], raw[1]-ganGyroRef[1], raw[2]-ganGyroRef[2]];
+  ganGyroRef = raw.slice();
+  const scale = GYRO_SCALE * (ganGyroSens > 0 ? ganGyroSens : 0);
   const rot = { x:0, y:0, z:0 };
   for (let i=0;i<3;i++){
-    const d = (raw[i] - ganGyroRef[i]) * GYRO_SCALE * GYRO_SIGN[i];
-    rot[GYRO_AXES[i]] = d;
+    let v = d[i];
+    if (Math.abs(v) < GYRO_DEADZONE) v = 0;            /* 死区：静置噪声不转 */
+    rot[GYRO_AXES[i]] = v * scale * GYRO_SIGN[i];
   }
   return { rot, raw };
 }
+function ganResetGyroBase(){ ganGyroRef = null; }   /* 重新以当前朝向为基准（对齐用） */
 
 /* ---------------- 实时封包记录（定位"整转误判成单面"用） ----------------
    真机连上后逐条记录魔方发来的原始数据，便于在 iPad 上直接看出：
@@ -5102,6 +5177,36 @@ function ganLogPush(rawHex, decHex, info) {
 function ganLogToggle() { ganLogOn = !ganLogOn; ganLogRefreshBtn(); toast(ganLogOn ? '已开始记录封包' : '已停止记录'); }
 function ganLogClear() { ganRawLog = []; const el = $('gan-rawlog'); if (el) el.textContent = ''; }
 function ganLogAutoStart() { ganLogOn = true; ganLogRefreshBtn(); }
+
+/* 整体旋转联动：开关 / 对齐 / 灵敏度（误判或太灵敏时用户可自行处理） */
+function ganToggleGyro(){
+  ganGyroOn = !ganGyroOn;
+  const b = $('gan-gyro-toggle');
+  if (b) b.textContent = ganGyroOn ? '⏸ 关闭联动' : '▶ 开启联动';
+  ganResetGyroBase();
+  toast(ganGyroOn ? '已开启整体旋转联动' : '已关闭整体旋转联动');
+}
+function ganAlignGyro(){
+  if (typeof resetPracOrientation === 'function') resetPracOrientation();   /* 屏幕整体朝向归零 + 重新对齐基准 */
+  ganResetGyroBase();
+  toast('已对齐：现在屏幕朝向 = 真魔方当前朝向');
+}
+function ganSetSens(v){
+  ganGyroSens = v;
+  const lab = $('gan-gyro-sens-val');
+  if (lab) lab.textContent = v.toFixed(2);
+}
+/* 导出封包日志（定位蓝牙/整体旋转问题用，发给开发者即可） */
+function exportGanLog(){
+  if (!ganRawLog.length){ toast('还没有封包记录，先连上魔方并点「开始记录」'); return; }
+  const blob = new Blob([ganRawLog.join('\n')], { type:'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '魔方封包日志-' + new Date().toISOString().slice(0,10) + '.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(a.href);
+  toast('已导出封包日志（发给开发者即可定位问题）');
+}
 
 function ganSetStatus(html) {
   const e = $('gan-status');
@@ -5296,17 +5401,20 @@ function onGanPacket(bytes) {
     } else if (ev.type === 'BATTERY') {
       if (ev.level !== ganBattery) {
         ganBattery = ev.level;
-        if (ganBattery <= 20) toast('🔋 魔方电量低了（' + ganBattery + '%），该换电池啦');
+        const b = $('gan-batt');
+        if (b) b.textContent = '🔋 电量：' + ganBattery + '%' + (ganBattery <= 15 ? '（偏低，建议换电池）' : '');
+        if (ganBattery <= 15) toast('🔋 魔方电量低了（' + ganBattery + '%），该换电池啦');
       }
     } else if (ev.type === 'GYRO') {
-      /* 整魔方手腕旋转：解成整体朝向，屏幕魔方跟着整体转 */
+      /* 整魔方手腕旋转：解成"这一刻转了多少"，增量叠加到屏幕（仅渲染，不动贴纸） */
+      if (!ganGyroOn) break;
       try {
         const g = ganDecodeGyro(ev.bits);
-        applyPracCubeRot(g.rot);
-        ganLogPush(rawHex, decHex, 'GYRO → 屏幕整体旋转 x=' + g.rot.x.toFixed(1) +
-          '° y=' + g.rot.y.toFixed(1) + '° z=' + g.rot.z.toFixed(1) +
+        if (g.rot.x || g.rot.y || g.rot.z) addPracCubeRot(g.rot);
+        ganLogPush(rawHex, decHex, 'GYRO 增量 x=' + g.rot.x.toFixed(2) +
+          '° y=' + g.rot.y.toFixed(2) + '° z=' + g.rot.z.toFixed(2) +
           '° （raw=' + g.raw.join(',') + '）');
-        /* 监测：低频记录整体朝向，便于回看「整转」有没有正确联动（约每 1.5 秒一条） */
+        /* 监测：低频记录整体朝向（约每 1.5 秒一条） */
         const now = Date.now();
         if (now - (ganGyroLogT || 0) > 1500){
           ganGyroLogT = now;

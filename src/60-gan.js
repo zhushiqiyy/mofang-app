@@ -199,11 +199,17 @@ function ganGen2Parse(bits, st, out) {
     }
     /* diff 为 0（无新步）或 >2（计数错位/历史缓冲）：只重同步，不放动作 */
     st.seen = true;
-  } else if (eventType === 0x04) {    /* 状态/电量包：电量在固定字节（实测 dec[13] = 0~100） */
-    const lvl = parseInt(bits.substr(13 * 8, 8), 2);
-    if (lvl >= 0 && lvl <= 100) out.push({ type: 'BATTERY', level: lvl });
+  } else if (eventType === 0x04) {    /* 状态/电量包：旧 dec[13] 常是固定标识位会误报 13%，改用 dec[17] 并做稳定性校验 */
+    const lvl = parseInt(bits.substr(17 * 8, 8), 2);
+    if (lvl >= 1 && lvl <= 100){
+      if (st.batLast == null || Math.abs(lvl - st.batLast) <= 25){
+        st.batStable = (st.batStable || 0) + 1;
+        st.batLast = lvl;
+        if (st.batStable >= 2) out.push({ type: 'BATTERY', level: lvl });  /* 连续两帧一致才采信，杜绝单帧误读 */
+      } else { st.batLast = lvl; st.batStable = 1; }
+    }
     st.seen = true;
-  } else if (eventType === 0x09) {    /* BATTERY */
+  } else if (eventType === 0x09) {    /* BATTERY（权威，直接采信） */
     out.push({ type: 'BATTERY', level: Math.min(ganBitWord(bits, 8, 8), 100) });
     st.seen = true;
   } else if (eventType === 0x0D) {    /* DISCONNECT */
@@ -305,11 +311,14 @@ let ganBackgroundRelease = false;   /* 后台主动断开标记（避免误报"�
    字节布局各代略有差异，先用可调参数读，连上真机后用封包日志核对、微调即可。 */
 let ganGyroRef = null;             /* 基准朝向：首条 0x1 包作为 0°，使屏幕从「对齐」开始 */
 let ganGyroLogT = 0;               /* 监测采样节流时间戳 */
+let ganGyroOn   = true;             /* 整体旋转联动开关（误判/太灵敏时可一键关） */
+let ganGyroSens = 0.5;              /* 灵敏度 0~1.5（App 内可调；0=不动，越大越跟手） */
 /* 可调参数（真机封包日志核对后微调） */
 const GYRO_OFF   = [2, 4, 6];       /* 三个 int16 在解密包里的字节起点（小端） */
 const GYRO_SCALE = 0.06;            /* 每单位 ≈ 0.06°；真机微调 */
 const GYRO_AXES  = ['x', 'y', 'z']; /* 三个 int16 分别对应屏幕的哪根轴 */
 const GYRO_SIGN  = [1, 1, 1];       /* 必要时取 -1 翻转某根轴 */
+const GYRO_DEADZONE = 12;           /* 死区：单帧原始抖动小于此值视为静止，不转（治"静置乱转"） */
 function ganReadGyroRaw(bits){
   return GYRO_OFF.map(off => {
     const lo = ganBitWord(bits, off*8, 8);
@@ -321,14 +330,19 @@ function ganReadGyroRaw(bits){
 }
 function ganDecodeGyro(bits){
   const raw = ganReadGyroRaw(bits);
-  if (!ganGyroRef) ganGyroRef = raw.slice();   /* 首次采样当基准，屏幕与真魔方对齐 */
+  if (!ganGyroRef){ ganGyroRef = raw.slice(); return { rot:{x:0,y:0,z:0}, raw }; }  /* 首帧只建基线，无增量 */
+  const d = [raw[0]-ganGyroRef[0], raw[1]-ganGyroRef[1], raw[2]-ganGyroRef[2]];
+  ganGyroRef = raw.slice();
+  const scale = GYRO_SCALE * (ganGyroSens > 0 ? ganGyroSens : 0);
   const rot = { x:0, y:0, z:0 };
   for (let i=0;i<3;i++){
-    const d = (raw[i] - ganGyroRef[i]) * GYRO_SCALE * GYRO_SIGN[i];
-    rot[GYRO_AXES[i]] = d;
+    let v = d[i];
+    if (Math.abs(v) < GYRO_DEADZONE) v = 0;            /* 死区：静置噪声不转 */
+    rot[GYRO_AXES[i]] = v * scale * GYRO_SIGN[i];
   }
   return { rot, raw };
 }
+function ganResetGyroBase(){ ganGyroRef = null; }   /* 重新以当前朝向为基准（对齐用） */
 
 /* ---------------- 实时封包记录（定位"整转误判成单面"用） ----------------
    真机连上后逐条记录魔方发来的原始数据，便于在 iPad 上直接看出：
@@ -351,6 +365,36 @@ function ganLogPush(rawHex, decHex, info) {
 function ganLogToggle() { ganLogOn = !ganLogOn; ganLogRefreshBtn(); toast(ganLogOn ? '已开始记录封包' : '已停止记录'); }
 function ganLogClear() { ganRawLog = []; const el = $('gan-rawlog'); if (el) el.textContent = ''; }
 function ganLogAutoStart() { ganLogOn = true; ganLogRefreshBtn(); }
+
+/* 整体旋转联动：开关 / 对齐 / 灵敏度（误判或太灵敏时用户可自行处理） */
+function ganToggleGyro(){
+  ganGyroOn = !ganGyroOn;
+  const b = $('gan-gyro-toggle');
+  if (b) b.textContent = ganGyroOn ? '⏸ 关闭联动' : '▶ 开启联动';
+  ganResetGyroBase();
+  toast(ganGyroOn ? '已开启整体旋转联动' : '已关闭整体旋转联动');
+}
+function ganAlignGyro(){
+  if (typeof resetPracOrientation === 'function') resetPracOrientation();   /* 屏幕整体朝向归零 + 重新对齐基准 */
+  ganResetGyroBase();
+  toast('已对齐：现在屏幕朝向 = 真魔方当前朝向');
+}
+function ganSetSens(v){
+  ganGyroSens = v;
+  const lab = $('gan-gyro-sens-val');
+  if (lab) lab.textContent = v.toFixed(2);
+}
+/* 导出封包日志（定位蓝牙/整体旋转问题用，发给开发者即可） */
+function exportGanLog(){
+  if (!ganRawLog.length){ toast('还没有封包记录，先连上魔方并点「开始记录」'); return; }
+  const blob = new Blob([ganRawLog.join('\n')], { type:'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '魔方封包日志-' + new Date().toISOString().slice(0,10) + '.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(a.href);
+  toast('已导出封包日志（发给开发者即可定位问题）');
+}
 
 function ganSetStatus(html) {
   const e = $('gan-status');
@@ -545,17 +589,20 @@ function onGanPacket(bytes) {
     } else if (ev.type === 'BATTERY') {
       if (ev.level !== ganBattery) {
         ganBattery = ev.level;
-        if (ganBattery <= 20) toast('🔋 魔方电量低了（' + ganBattery + '%），该换电池啦');
+        const b = $('gan-batt');
+        if (b) b.textContent = '🔋 电量：' + ganBattery + '%' + (ganBattery <= 15 ? '（偏低，建议换电池）' : '');
+        if (ganBattery <= 15) toast('🔋 魔方电量低了（' + ganBattery + '%），该换电池啦');
       }
     } else if (ev.type === 'GYRO') {
-      /* 整魔方手腕旋转：解成整体朝向，屏幕魔方跟着整体转 */
+      /* 整魔方手腕旋转：解成"这一刻转了多少"，增量叠加到屏幕（仅渲染，不动贴纸） */
+      if (!ganGyroOn) break;
       try {
         const g = ganDecodeGyro(ev.bits);
-        applyPracCubeRot(g.rot);
-        ganLogPush(rawHex, decHex, 'GYRO → 屏幕整体旋转 x=' + g.rot.x.toFixed(1) +
-          '° y=' + g.rot.y.toFixed(1) + '° z=' + g.rot.z.toFixed(1) +
+        if (g.rot.x || g.rot.y || g.rot.z) addPracCubeRot(g.rot);
+        ganLogPush(rawHex, decHex, 'GYRO 增量 x=' + g.rot.x.toFixed(2) +
+          '° y=' + g.rot.y.toFixed(2) + '° z=' + g.rot.z.toFixed(2) +
           '° （raw=' + g.raw.join(',') + '）');
-        /* 监测：低频记录整体朝向，便于回看「整转」有没有正确联动（约每 1.5 秒一条） */
+        /* 监测：低频记录整体朝向（约每 1.5 秒一条） */
         const now = Date.now();
         if (now - (ganGyroLogT || 0) > 1500){
           ganGyroLogT = now;

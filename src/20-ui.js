@@ -1078,7 +1078,7 @@ function saveDataCloud(){
 }
 function uploadData(){
   const url = (store.cloud && store.cloud.url) || ($('data-url').value||'').trim();
-  if (!url){ $('data-cloud-msg').textContent = '⚠️ 还没填上传地址。没有服务器也能「导出 JSON」先保存。'; return; }
+  if (!url){ $('data-cloud-msg').textContent = '⚠️ 还没填上传地址，已自动导出 JSON 到本机（可发给我排查）。'; exportData(); return; }
   $('data-cloud-msg').textContent = '☁️ 正在上传…';
   const payload = { app:'cfop-kids', exportedAt: Date.now(), data: store.training };
   fetch(url, {
@@ -1086,8 +1086,26 @@ function uploadData(){
   }).then(r => {
     $('data-cloud-msg').textContent = r.ok ? '✅ 上传成功！' : ('⚠️ 服务器返回 ' + r.status + '，请检查接口。');
   }).catch(e => {
-    $('data-cloud-msg').textContent = '⚠️ 上传失败：' + (e && e.message || e) + '（离线或地址不对？可改用导出 JSON）';
+    $('data-cloud-msg').textContent = '⚠️ 上传失败：' + (e && e.message || e) + '（离线或地址不对？已自动改为导出 JSON 到本机）';
+    exportData();
   });
+}
+/* 把训练数据以纯文本弹窗展示，可长按复制或点「复制」发给我排查 */
+function copyTraining(){
+  const payload = { app:'cfop-kids', exportedAt: Date.now(), store: { training: store.training, learned: store.learned, battle: store.battle } };
+  const json = JSON.stringify(payload, null, 2);
+  $('sheet').innerHTML =
+    '<div class="sheet-head"><h3>📋 训练数据（复制后发给我）</h3><button class="closex" onclick="closeModal()">✕</button></div>'
+    + '<div class="sub">长按下方文字全选复制，或点「复制」按钮，把内容发给我即可定位问题。</div>'
+    + '<textarea id="copy-box" style="width:100%;height:300px;margin-top:8px;font-family:ui-monospace,monospace;font-size:12px;padding:8px;border-radius:10px;border:1px solid #ccd;">' + json.replace(/</g,'&lt;') + '</textarea>'
+    + '<div class="row center" style="margin-top:10px;gap:8px;"><button class="btn blue sm" onclick="doCopyTraining()">📋 复制</button></div>';
+  $('modal').classList.add('show');
+  setTimeout(() => { const t = $('copy-box'); if (t) t.focus(); }, 50);
+}
+function doCopyTraining(){
+  const t = $('copy-box'); if (!t) return; t.select();
+  try { document.execCommand('copy'); toast('已复制，去粘贴给我'); }
+  catch (e) { toast('请手动长按全选复制'); }
 }
 function exportData(){
   const payload = { app:'cfop-kids', exportedAt: Date.now(), store: { training: store.training, learned: store.learned, battle: store.battle } };
