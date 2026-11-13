@@ -394,8 +394,9 @@
       <div class="gh-grid">
         <input id="gh-owner" class="inp" placeholder="GitHub 用户名（如 zhushiqiyy）">
         <input id="gh-repo" class="inp" placeholder="仓库名（默认 mofang-data）">
-        <input id="gh-path" class="inp" placeholder="文件路径（默认 training-data.json）">
+        <input id="gh-path" class="inp" placeholder="训练数据路径（默认 training-data.json）">
         <input id="gh-branch" class="inp" placeholder="分支（默认 main）">
+        <input id="gh-diagpath" class="inp" placeholder="诊断报告路径（默认 diag/reports.json）">
         <input id="gh-token" class="inp" type="password" placeholder="个人访问令牌 PAT（仅该仓库 Contents 读写）" style="grid-column:1 / -1;">
       </div>
       <div class="row center" style="margin-top:10px;gap:10px;flex-wrap:wrap;">
@@ -423,6 +424,20 @@
   <div class="card">
     <h3>📋 训练记录</h3>
     <div id="data-list" class="log"></div>
+  </div>
+
+  <div class="card">
+    <h3>🔧 诊断自测中心（测试功能）</h3>
+    <div class="sub" style="line-height:1.8;">App 内跑一组内置自测，检查之前出过问题的地方（白顶识别、整转静置不乱转、电量只认权威包、还原思路每次干净复位、跟练逐步核对等）。把<b>测试代码 + 检测出的问题</b>上传到云端，开发者从云端调取分析并改善，再把新版本发回来。</div>
+    <div class="row center" style="margin-top:12px;gap:8px;flex-wrap:wrap;">
+      <button class="btn blue sm" id="diag-run">▶ 运行自检</button>
+      <button class="btn alt sm" id="diag-upload" disabled>☁️ 上传云端</button>
+      <button class="btn alt sm" id="diag-fetch">🔍 从云端调取</button>
+    </div>
+    <div id="diag-msg" class="sub" style="margin-top:8px;min-height:18px;"></div>
+    <div id="diag-raw" style="margin-top:4px;"></div>
+    <div id="diag-results" class="diag-list" style="margin-top:10px;"></div>
+    <div id="diag-cloud" class="card tight" style="margin-top:10px;background:#f8fbff;"></div>
   </div>
 
   <div class="card">

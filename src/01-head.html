@@ -454,4 +454,12 @@
     .char-shadow, .sheen-band-gloss, .sheen-band-holo{ animation:none; }
     .aura{ opacity:.4; }
   }
+
+  /* ============ 诊断自测中心 ============ */
+  .diag-list{ display:flex; flex-direction:column; gap:8px; }
+  .diag-item{ border:1px solid var(--line); border-radius:10px; padding:8px 10px; background:#fff; }
+  .diag-item.ok{ border-left:4px solid #1a9e4b; }
+  .diag-item.bad{ border-left:4px solid #d23b3b; background:#fff6f6; }
+  .diag-fix{ margin-top:6px; font-size:12.5px; color:#7a4a12; background:#fff4e0; border-radius:8px; padding:6px 8px; line-height:1.6; }
+  #diag-raw code{ font-size:11.5px; word-break:break-all; color:var(--sub); }
 </style>

@@ -36,7 +36,7 @@ function loadStore(){
   s.training = s.training || [];     /* 训练数据：实战复原 / 公式跟练 / 打乱练习等 */
   /* 云端配置：支持 GitHub 仓库（默认）或自定义服务器 */
   s.cloud = s.cloud || { mode:'github', url:'', owner:'zhushiqiyy', repo:'mofang-data',
-                         path:'training-data.json', branch:'main', token:'', auto:false, lastRaw:'' };
+                         path:'training-data.json', diagPath:'diag/reports.json', branch:'main', token:'', auto:false, lastRaw:'', lastDiagRaw:'' };
   return s;
 }
 function saveStore(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch(e){} }
@@ -1070,6 +1070,7 @@ function renderData(){
   if ($('gh-owner')) $('gh-owner').value = c.owner || 'zhushiqiyy';
   if ($('gh-repo')) $('gh-repo').value = c.repo || 'mofang-data';
   if ($('gh-path')) $('gh-path').value = c.path || 'training-data.json';
+  if ($('gh-diagpath')) $('gh-diagpath').value = c.diagPath || 'diag/reports.json';
   if ($('gh-branch')) $('gh-branch').value = c.branch || 'main';
   if ($('gh-token')) $('gh-token').value = c.token || '';
   if ($('gh-auto')) $('gh-auto').checked = !!c.auto;
@@ -1110,6 +1111,8 @@ function renderData(){
     if (cnt.scramble) tips.push('打乱练习做了 ' + cnt.scramble + ' 次，手感在积累，很好。');
   }
   adv.innerHTML = tips.map(x => '· ' + x).join('<br>');
+
+  if (typeof renderDiagnostics === 'function') renderDiagnostics();
 }
 
 function onCloudMode(){
@@ -1130,6 +1133,7 @@ function saveDataCloud(){
     store.cloud.owner  = ($('gh-owner').value||'').trim() || 'zhushiqiyy';
     store.cloud.repo   = ($('gh-repo').value||'').trim() || 'mofang-data';
     store.cloud.path   = ($('gh-path').value||'').trim() || 'training-data.json';
+    store.cloud.diagPath = ($('gh-diagpath').value||'').trim() || 'diag/reports.json';
     store.cloud.branch = ($('gh-branch').value||'').trim() || 'main';
     store.cloud.token  = ($('gh-token').value||'').trim();
     store.cloud.auto   = !!($('gh-auto')||{}).checked;

@@ -1,0 +1,185 @@
+{
+  "app": "cfop-kids",
+  "what": "diagnostic",
+  "when": "2026-11-13T08:22:16.690Z",
+  "ua": "node-diag-runner",
+  "total": 10,
+  "pass": 10,
+  "fail": 0,
+  "skip": 0,
+  "testCode": [
+    {
+      "id": "white-top",
+      "name": "白顶识别（U面=白）",
+      "desc": "复原态下 U 面须全为白色（UP_COLOR），D 面全黄；顶面识别一律按 UP_COLOR 判定，不再写死黄色。",
+      "kind": "logic",
+      "severity": "high"
+    },
+    {
+      "id": "move-inverse",
+      "name": "逆序还原必回原位",
+      "desc": "任意打乱序列，正向应用后再逆向应用，必须精确回到复原态（几何引擎正确性的根本不变量）。",
+      "kind": "logic",
+      "severity": "high"
+    },
+    {
+      "id": "gyro-idle",
+      "name": "整转静置不乱转",
+      "desc": "真魔方不动时，陀螺仪字节会有微小抖动。解码器必须用死区+持续判定把抖动滤成 0，否则静置也会整体乱转、色块乱飞。",
+      "kind": "logic",
+      "severity": "high"
+    },
+    {
+      "id": "gyro-respond",
+      "name": "整转真转有响应",
+      "desc": "真魔方确实在手腕整转时，解码器应给出非零、且方向一致的转角（否则联动失效、魔方\"纹丝不动\"）。",
+      "kind": "logic",
+      "severity": "med"
+    },
+    {
+      "id": "gyro-spike",
+      "name": "单帧尖峰不飞转",
+      "desc": "偶发的字节误读会造成单帧巨幅跳变。解码器必须丢弃超过上限的单帧尖峰，避免魔方\"瞬间飞转\"。",
+      "kind": "logic",
+      "severity": "med"
+    },
+    {
+      "id": "gyro-clamp",
+      "name": "整体旋转限幅(±80°)",
+      "desc": "实战预览的整体朝向 addPracCubeRot 必须限幅在 ±80°，防止陀螺仪持续累积把魔方转\"飞\"。",
+      "kind": "logic",
+      "severity": "med"
+    },
+    {
+      "id": "battery-authority",
+      "name": "电量只认 0x09 权威包",
+      "desc": "只有 eventType=0x09 的包才上报电量，且需连续两帧一致才采信；0x04 状态包绝不产生电量（旧版误读导致\"假电量低 13%\"）。",
+      "kind": "logic",
+      "severity": "high"
+    },
+    {
+      "id": "cfop-clean-reset",
+      "name": "还原思路每次干净复位",
+      "desc": "\"按思路演示\"必须从标准打乱态（cfopThinkStart）开始，不能继承上一次演示的残留状态；其不变量是：标准态 + 逆序解法 = 复原态。",
+      "kind": "logic",
+      "severity": "high"
+    },
+    {
+      "id": "follow-check",
+      "name": "跟练逐步核对(对错/撤销)",
+      "desc": "公式跟练/还原思路跟练：按解法走应判定完成；中途拧反一步应判为\"撤销上一步\"；拧错方向应判为错误并指出第几步。",
+      "kind": "logic",
+      "severity": "med"
+    },
+    {
+      "id": "diag-ui",
+      "name": "诊断中心 UI 已挂载",
+      "desc": "数据页应存在诊断结果容器 #diag-results，否则运行/上传按钮无处展示。",
+      "kind": "dom",
+      "severity": "low"
+    }
+  ],
+  "results": [
+    {
+      "id": "white-top",
+      "name": "白顶识别（U面=白）",
+      "desc": "复原态下 U 面须全为白色（UP_COLOR），D 面全黄；顶面识别一律按 UP_COLOR 判定，不再写死黄色。",
+      "kind": "logic",
+      "severity": "high",
+      "pass": true,
+      "detail": "U面=w D面=y；顶面识别=正确",
+      "fix": "统一改用 UP_COLOR 常量；若仍有黄色出现在 U 面，检查 solvedCube / buildChart / ollThumb 是否写死 'y'。"
+    },
+    {
+      "id": "move-inverse",
+      "name": "逆序还原必回原位",
+      "desc": "任意打乱序列，正向应用后再逆向应用，必须精确回到复原态（几何引擎正确性的根本不变量）。",
+      "kind": "logic",
+      "severity": "high",
+      "pass": true,
+      "detail": "抽样 60 条随机序列，回不去的 0 条。",
+      "fix": "若 bad>0，说明 applyMove/moveOf/rot3 有几何错误，优先排查单层坐标与旋转轴。"
+    },
+    {
+      "id": "gyro-idle",
+      "name": "整转静置不乱转",
+      "desc": "真魔方不动时，陀螺仪字节会有微小抖动。解码器必须用死区+持续判定把抖动滤成 0，否则静置也会整体乱转、色块乱飞。",
+      "kind": "logic",
+      "severity": "high",
+      "pass": true,
+      "detail": "静置 20 帧，单帧最大转角 = 0.000°（应为 0）。",
+      "fix": "若静置仍有转角：调大 GYRO_DEADZONE（当前 20）或提高 GYRO_SUSTAIN（当前 2），并检查 ganDecodeGyro 死区是否被绕过。"
+    },
+    {
+      "id": "gyro-respond",
+      "name": "整转真转有响应",
+      "desc": "真魔方确实在手腕整转时，解码器应给出非零、且方向一致的转角（否则联动失效、魔方\"纹丝不动\"）。",
+      "kind": "logic",
+      "severity": "med",
+      "pass": true,
+      "detail": "持续右转 6 帧后累计转角 x=1.80° y=1.80° z=1.80°。",
+      "fix": "若完全无响应：检查 GYRO_OFF 字节偏移与 GYRO_SCALE 是否命中真机布局；先用封包日志核对字节。"
+    },
+    {
+      "id": "gyro-spike",
+      "name": "单帧尖峰不飞转",
+      "desc": "偶发的字节误读会造成单帧巨幅跳变。解码器必须丢弃超过上限的单帧尖峰，避免魔方\"瞬间飞转\"。",
+      "kind": "logic",
+      "severity": "med",
+      "pass": true,
+      "detail": "连续 3 帧 5000 巨跳后转角 x=0.000°（应为 0）。",
+      "fix": "若尖峰导致飞转：调小 GYRO_MAXSTEP（当前 25°）让单帧误读被丢弃。"
+    },
+    {
+      "id": "gyro-clamp",
+      "name": "整体旋转限幅(±80°)",
+      "desc": "实战预览的整体朝向 addPracCubeRot 必须限幅在 ±80°，防止陀螺仪持续累积把魔方转\"飞\"。",
+      "kind": "logic",
+      "severity": "med",
+      "pass": true,
+      "detail": "注入 9999° 后实际限幅到 80°（上限 ±80）。",
+      "fix": "若超出 ±80：检查 addPracCubeRot 的 clampN 调用与上限常量 L。"
+    },
+    {
+      "id": "battery-authority",
+      "name": "电量只认 0x09 权威包",
+      "desc": "只有 eventType=0x09 的包才上报电量，且需连续两帧一致才采信；0x04 状态包绝不产生电量（旧版误读导致\"假电量低 13%\"）。",
+      "kind": "logic",
+      "severity": "high",
+      "pass": true,
+      "detail": "单帧0x09上报=false；两帧稳定上报=true；0x04状态包误报电量=false。",
+      "fix": "若 0x04 仍误报电量或单帧就上报：检查 ganGen2Parse 的 0x09/0x04 分支与\"连续两帧一致\"门槛。"
+    },
+    {
+      "id": "cfop-clean-reset",
+      "name": "还原思路每次干净复位",
+      "desc": "\"按思路演示\"必须从标准打乱态（cfopThinkStart）开始，不能继承上一次演示的残留状态；其不变量是：标准态 + 逆序解法 = 复原态。",
+      "kind": "logic",
+      "severity": "high",
+      "pass": true,
+      "detail": "抽查 30 个随机打乱，演示起点+解法回不去的 0 个。",
+      "fix": "若 bad>0：确认 showCfopThink 用 pracScrambleToks 计算 cfopThinkStart=applyAlg(solved,S)，demoCfopThink 每轮用 cfopThinkStart 克隆复位。"
+    },
+    {
+      "id": "follow-check",
+      "name": "跟练逐步核对(对错/撤销)",
+      "desc": "公式跟练/还原思路跟练：按解法走应判定完成；中途拧反一步应判为\"撤销上一步\"；拧错方向应判为错误并指出第几步。",
+      "kind": "logic",
+      "severity": "med",
+      "pass": true,
+      "detail": "正确走完完成=true；拧反撤销=true；错误定位步=2。",
+      "fix": "若核对异常：检查 mFollowTokEq / mFollowInv 及\"拧反=出栈\"逻辑。"
+    },
+    {
+      "id": "diag-ui",
+      "name": "诊断中心 UI 已挂载",
+      "desc": "数据页应存在诊断结果容器 #diag-results，否则运行/上传按钮无处展示。",
+      "kind": "dom",
+      "severity": "low",
+      "pass": true,
+      "detail": "已找到 #diag-results。",
+      "fix": "在 02-body.html 的「训练数据」页加入诊断卡片与 <div id=\"diag-results\">。"
+    }
+  ],
+  "problems": []
+}

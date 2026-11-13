@@ -312,8 +312,10 @@ let ganGyroRef = null;             /* 基准朝向：首条 0x1 包作为 0°，
 let ganGyroLogT = 0;               /* 监测采样节流时间戳 */
 let ganGyroOn   = true;             /* 整体旋转联动开关（误判/太灵敏时可一键关） */
 let ganGyroSens = 0.5;              /* 灵敏度 0~1.5（App 内可调；0=不动，越大越跟手） */
-let ganGyroPrevDelta = [0,0,0];     /* 上一帧各轴增量（持续判定用） */
-let ganGyroSustain   = [0,0,0];     /* 各轴"连续同方向超阈值"计数（去抖） */
+let ganGyroPrevSign = [0,0,0];      /* 上一帧"原始增量"的符号，留作同向持续判定
+                                        （即便本帧被滤成 0 也保留，避免抖动打断持续计数——
+                                          否则持续计数永远到不了 2，真魔方转动也毫无响应） */
+let ganGyroSustain  = [0,0,0];      /* 各轴"连续同方向超阈值"计数（去抖） */
 /* 可调参数（真机封包日志核对后微调） */
 const GYRO_OFF   = [2, 4, 6];       /* 三个 int16 在解密包里的字节起点（小端） */
 const GYRO_SCALE = 0.06;            /* 每单位 ≈ 0.06°；真机微调 */
@@ -335,7 +337,7 @@ function ganReadGyroRaw(bits){
    加死区 + 限幅 + 单帧尖峰丢弃，彻底消除"静置也乱转 / 色块乱飞"。 */
 function ganDecodeGyro(bits){
   const raw = ganReadGyroRaw(bits);
-  if (!ganGyroRef){ ganGyroRef = raw.slice(); ganGyroPrevDelta = [0,0,0]; ganGyroSustain = [0,0,0];
+  if (!ganGyroRef){ ganGyroRef = raw.slice(); ganGyroPrevSign = [0,0,0]; ganGyroSustain = [0,0,0];
                     return { rot:{x:0,y:0,z:0}, raw }; }  /* 首帧只建基线，无增量 */
   const d = [raw[0]-ganGyroRef[0], raw[1]-ganGyroRef[1], raw[2]-ganGyroRef[2]];
   ganGyroRef = raw.slice();
@@ -343,17 +345,19 @@ function ganDecodeGyro(bits){
   const rot = { x:0, y:0, z:0 };
   for (let i=0;i<3;i++){
     let v = d[i];
+    const sign = Math.sign(v);
     if (Math.abs(v) < GYRO_DEADZONE){ v = 0; ganGyroSustain[i] = 0; }   /* 死区：静置噪声直接归零 */
-    else if (Math.sign(v) === Math.sign(ganGyroPrevDelta[i])) ganGyroSustain[i]++;  /* 同方向持续 */
-    else ganGyroSustain[i] = 1;                                           /* 反向/首帧：重新计数 */
+    else if (sign === ganGyroPrevSign[i]) ganGyroSustain[i]++;            /* 与上一帧原始增量同向 → 持续 */
+    else ganGyroSustain[i] = 1;                                          /* 反向/首帧 → 重新开始计数 */
     if (ganGyroSustain[i] < GYRO_SUSTAIN) v = 0;                         /* 未持续够帧数 → 抖动丢弃 */
     if (Math.abs(v * scale) > GYRO_MAXSTEP) v = 0;                       /* 单帧尖峰（疑似误读）丢弃 */
-    ganGyroPrevDelta[i] = v;
+    /* 保留"原始增量"的符号连续性：即便本帧被滤成 0，下帧仍可据此判定是否同向 */
+    ganGyroPrevSign[i] = (sign !== 0) ? sign : ganGyroPrevSign[i];
     rot[GYRO_AXES[i]] = v * scale * GYRO_SIGN[i];
   }
   return { rot, raw };
 }
-function ganResetGyroBase(){ ganGyroRef = null; ganGyroPrevDelta = [0,0,0]; ganGyroSustain = [0,0,0]; }
+function ganResetGyroBase(){ ganGyroRef = null; ganGyroPrevSign = [0,0,0]; ganGyroSustain = [0,0,0]; }
 
 /* ---------------- 实时封包记录（定位"整转误判成单面"用） ----------------
    真机连上后逐条记录魔方发来的原始数据，便于在 iPad 上直接看出：
