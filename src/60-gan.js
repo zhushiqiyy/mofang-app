@@ -202,11 +202,30 @@ function ganGen2Parse(bits, st, out) {
   } else if (eventType === 0x04) {    /* 状态包：经验上这里没有可靠的独立电量字节（旧代码读 dec[13]/dec[17] 都误报过 13%）。
                                          只用于"已同步"判定，电量统一交给 0x09 权威包，避免假低电量。 */
     st.seen = true;
-  } else if (eventType === 0x09) {    /* BATTERY 权威包：byte1 为电量(1~100)。需连续稳定才采信，杜绝单帧误读 */
-    const lvl = Math.min(ganBitWord(bits, 8, 8), 100);
-    if (lvl >= 1 && lvl <= 100){
-      if (st.batLast == null) { st.batLast = lvl; st.batStable = 1; }
-      else if (Math.abs(lvl - st.batLast) <= 3) { st.batStable = (st.batStable || 0) + 1; st.batLast = lvl; }
+  } else if (eventType === 0x09) {    /* BATTERY 包：逐字节扫描真正的电量位（不再假设固定偏移，避免误报假低电量） */
+    const N = Math.min(20, Math.floor(bits.length / 8));
+    const vals = [];
+    for (let p = 0; p < N; p++) vals.push(ganBitWord(bits, p * 8, 8));
+    ganBatPkts.push(vals);
+    if (ganBatPkts.length > 6) ganBatPkts.shift();
+    /* 候选：在所有历史包里都落在 [1,100] 的字节位（排除事件类型字节等恒为常数/超范围的结构位） */
+    const cand = [];
+    for (let p = 0; p < N; p++){
+      const seen = new Set();
+      let ok = true;
+      for (const pkt of ganBatPkts){ const v = pkt[p]; if (v < 1 || v > 100){ ok = false; break; } seen.add(v); }
+      if (ok) cand.push({ p, distinct: seen.size });
+    }
+    /* 候选按"波动度"排序。电量位几乎总是唯一落在 [1,100] 的字节（其余字节多为 0 或 >100），
+       所以：若只有唯一候选 → 直接采信（真电量在相邻包里是稳定值，不必强求波动，否则稳定电量永远报不出）；
+       若同时出现多个候选（存疑）→ 只采信"会波动"的那个，排除恒为常数的结构位，避免假低电量。 */
+    cand.sort((a, b) => b.distinct - a.distinct);
+    const chosen = cand.length === 1 ? cand[0]
+                 : (cand.length > 1 && cand[0].distinct >= 2 ? cand[0] : null);
+    if (chosen){
+      const lvl = vals[chosen.p];
+      if (st.batLast == null){ st.batLast = lvl; st.batStable = 1; }
+      else if (Math.abs(lvl - st.batLast) <= 3){ st.batStable = (st.batStable || 0) + 1; st.batLast = lvl; }
       else { st.batLast = lvl; st.batStable = 1; }
       if (st.batStable >= 2) out.push({ type: 'BATTERY', level: lvl });  /* 连续两帧一致才上报 */
     }
@@ -299,10 +318,12 @@ let ganConn = null;                 /* BLE 连接（见 55-ble.js） */
 let ganEnc = null;                  /* 加解密器 */
 let ganGen = 2;                     /* 协议代际 2/3/4 */
 let ganParseState = { lastSerial: -1 };
+let ganBatPkts = [];                /* 最近若干 0x09 包的逐字节值，用于扫描"真电量位"（排除恒为结构常数的位） */
 let ganBattery = -1;
 let ganFaceletsTimer = null;
 let ganLastHandle = null;           /* 记住上次连过的设备，用于前后台自动重连 */
 let ganBackgroundRelease = false;   /* 后台主动断开标记（避免误报"断开了"） */
+let ganStayConnected = false;       /* 期望保持连接（用于意外断开后自动补连） */
 
 /* ---------------- 整体旋转（手腕整转）联动 ----------------
    GAN 整魔方手腕旋转时发的是 eventType=0x1 的包（拧单面才是 0x2，见上方解析）。
@@ -321,9 +342,14 @@ const GYRO_OFF   = [2, 4, 6];       /* 三个 int16 在解密包里的字节起�
 const GYRO_SCALE = 0.06;            /* 每单位 ≈ 0.06°；真机微调 */
 const GYRO_AXES  = ['x', 'y', 'z']; /* 三个 int16 分别对应屏幕的哪根轴 */
 const GYRO_SIGN  = [1, 1, 1];       /* 必要时取 -1 翻转某根轴 */
-const GYRO_DEADZONE = 20;           /* 死区：单帧原始抖动小于此值视为静止（治"静置乱转"） */
-const GYRO_SUSTAIN  = 2;            /* 同一方向需连续 N 帧超阈值才算"真在转"，滤掉偶发抖动 */
-const GYRO_MAXSTEP  = 25;           /* 单帧角度上限(°)：超过即视为字节误读，丢弃该轴 */
+/* 死区/尖峰/持续统一用「角度(°)」判定（不再用原始单位——之前用原始单位导致阈值失真，
+   静置噪声也能轻松穿过死区造成乱跳）：
+   - 死区 GYRO_DEAD_DEG：单帧转角 < 此值视为静止噪声，直接归零
+   - 尖峰 GYRO_MAXSTEP_DEG：单帧转角 > 此值视为字节误读/瞬跳，丢弃且不污染基线
+   - 持续 GYRO_SUSTAIN：同方向需连续 N 帧超死区，才算"真在转"，滤掉偶发抖动 */
+const GYRO_DEAD_DEG     = 2.0;      /* 死区(°) */
+const GYRO_MAXSTEP_DEG  = 12.0;     /* 单帧角度上限(°) */
+const GYRO_SUSTAIN  = 3;            /* 同一方向需连续 N 帧超阈值才算"真在转" */
 function ganReadGyroRaw(bits){
   return GYRO_OFF.map(off => {
     const lo = ganBitWord(bits, off*8, 8);
@@ -333,27 +359,37 @@ function ganReadGyroRaw(bits){
     return v;
   });
 }
-/* 整魔方手腕旋转：增量式解码（相对上一帧），只取"持续同方向"的变化，
-   加死区 + 限幅 + 单帧尖峰丢弃，彻底消除"静置也乱转 / 色块乱飞"。 */
+/* 整魔方手腕旋转：增量式解码（相对上一帧），统一在「角度(°)」域判定，
+   只取"持续同方向"的变化，加死区 + 限幅 + 单帧尖峰丢弃，彻底消除"静置也乱转 / 色块乱飞"。
+   关键：单帧尖峰(疑似字节误读)不仅丢弃转角，且不更新基线，避免基线被带飞导致后续持续漂移。 */
 function ganDecodeGyro(bits){
   const raw = ganReadGyroRaw(bits);
   if (!ganGyroRef){ ganGyroRef = raw.slice(); ganGyroPrevSign = [0,0,0]; ganGyroSustain = [0,0,0];
                     return { rot:{x:0,y:0,z:0}, raw }; }  /* 首帧只建基线，无增量 */
   const d = [raw[0]-ganGyroRef[0], raw[1]-ganGyroRef[1], raw[2]-ganGyroRef[2]];
-  ganGyroRef = raw.slice();
   const scale = GYRO_SCALE * (ganGyroSens > 0 ? ganGyroSens : 0);
   const rot = { x:0, y:0, z:0 };
   for (let i=0;i<3;i++){
-    let v = d[i];
-    const sign = Math.sign(v);
-    if (Math.abs(v) < GYRO_DEADZONE){ v = 0; ganGyroSustain[i] = 0; }   /* 死区：静置噪声直接归零 */
-    else if (sign === ganGyroPrevSign[i]) ganGyroSustain[i]++;            /* 与上一帧原始增量同向 → 持续 */
-    else ganGyroSustain[i] = 1;                                          /* 反向/首帧 → 重新开始计数 */
-    if (ganGyroSustain[i] < GYRO_SUSTAIN) v = 0;                         /* 未持续够帧数 → 抖动丢弃 */
-    if (Math.abs(v * scale) > GYRO_MAXSTEP) v = 0;                       /* 单帧尖峰（疑似误读）丢弃 */
+    const deg  = d[i] * scale;                 /* 本帧转角（度） */
+    const sign = Math.sign(d[i]);
+    let v = 0;
+    if (Math.abs(deg) < GYRO_DEAD_DEG){        /* 死区：静置噪声直接归零 */
+      ganGyroSustain[i] = 0;
+    } else if (Math.abs(deg) > GYRO_MAXSTEP_DEG){ /* 单帧尖峰：疑似字节误读 → 丢弃且不污染基线 */
+      ganGyroSustain[i] = 0;
+      ganGyroRef[i] = raw[i];                   /* 吸收坏样本，防止基线被带飞 */
+      continue;
+    } else if (sign === ganGyroPrevSign[i]){    /* 与上一帧原始增量同向 → 持续 */
+      ganGyroSustain[i]++;
+    } else {                                    /* 反向 / 首帧 → 重新开始计数 */
+      ganGyroSustain[i] = 1;
+    }
+    if (ganGyroSustain[i] >= GYRO_SUSTAIN) v = deg;   /* 持续同方向才确认是真转 */
     /* 保留"原始增量"的符号连续性：即便本帧被滤成 0，下帧仍可据此判定是否同向 */
     ganGyroPrevSign[i] = (sign !== 0) ? sign : ganGyroPrevSign[i];
-    rot[GYRO_AXES[i]] = v * scale * GYRO_SIGN[i];
+    /* 仅当本帧不是尖峰时才推进基线 */
+    if (Math.abs(deg) <= GYRO_MAXSTEP_DEG) ganGyroRef[i] = raw[i];
+    rot[GYRO_AXES[i]] = v * GYRO_SIGN[i];
   }
   return { rot, raw };
 }
@@ -530,6 +566,7 @@ async function pracConnectGAN() {
         : (svc === BLE.GAN_GEN3_SERVICE ? 3
         : (svc === BLE.GAN_GEN4_SERVICE ? 4 : 2));
   ganParseState = { lastSerial: -1, seen: false };
+  ganBatPkts = [];
   ganBattery = -1;
   { const gb = $('gan-batt'); if (gb) gb.textContent = '🔋 电量：未知'; }
 
@@ -550,6 +587,7 @@ async function pracConnectGAN() {
   ganSetStatus('✅ 已连接 <b>' + (handle.name || '魔方') + '</b>！<br>' +
                '现在拧真魔方，屏幕上的魔方会跟着转，并自动开始计时。');
   toast('已连接，拧一下试试');
+  ganStayConnected = true;
   ganLogAutoStart();   /* 连上即自动记录封包，方便定位"整转误判成单面" */
   ganGyroRef = null;   /* 整转联动：首条 0x1 包作为基准朝向，屏幕与真魔方对齐 */
   if (typeof resetPracOrientation === 'function') resetPracOrientation();
@@ -640,7 +678,12 @@ function onGanDisconnect() {
   ganConn = null;
   ganEnc = null;
   if (ganFaceletsTimer) { clearTimeout(ganFaceletsTimer); ganFaceletsTimer = null; }
-  if (ganBackgroundRelease) { ganBackgroundRelease = false; return; }   /* 后台主动断开，不提示 */
+  if (ganBackgroundRelease) { ganBackgroundRelease = false; ganStayConnected = false; return; }   /* 后台主动断开，不提示 */
+  if (ganStayConnected && ganLastHandle){   /* 意外断开（后台回来/信号丢了）→ 自动补连，不必手动 */
+    ganSetStatus('⚠️ 魔方断开了，正在自动重连…');
+    ganReconnect(ganLastHandle);
+    return;
+  }
   ganSetStatus('⚠️ 魔方断开了。点「连接魔方」重新连一次。');
   toast('魔方断开了');
 }
@@ -773,22 +816,24 @@ function ganZero() {
    目标：魔方只跟「正在前台使用」的这个 App 连。
    - 切到后台：主动断开，把魔方让给别的 App（或让魔方休眠）
    - 回到前台：用记住的设备直接重连（无需再扫描） */
-async function ganReconnect(handle) {
+async function ganReconnect(handle, attempt) {
+  attempt = attempt || 1;
   let mac = handle.mac || loadGanMac(handle.name);
-  if (!mac) { pracConnectGAN(); return; }        /* 没记住 MAC → 走完整流程（会弹 MAC 框） */
-  try { ganEnc = ganMakeEncrypter(mac); } catch (e) { pracConnectGAN(); return; }
+  if (!mac) { ganStayConnected = false; pracConnectGAN(); return; }   /* 没记住 MAC → 走完整流程（会弹 MAC 框） */
+  try { ganEnc = ganMakeEncrypter(mac); } catch (e) { ganStayConnected = false; pracConnectGAN(); return; }
   try {
     ganConn = await BLE.connect(handle, onGanPacket, onGanDisconnect);
   } catch (e) {
     ganConn = null;
-    pracConnectGAN();                             /* 直接连失败（魔方睡着/ID 失效）→ 退回扫描 */
-    return;
+    if (attempt < 3){ ganSetStatus('自动重连失败，' + attempt + '/3 秒后重试…'); setTimeout(() => ganReconnect(handle, attempt + 1), 700); return; }
+    ganSetStatus('自动重连失败，请点「连接魔方」重新连。'); toast('需手动重连魔方'); ganStayConnected = false; return;
   }
   const svc = (ganConn.service || '').toLowerCase();
   ganGen = svc === BLE.GAN_GEN2_SERVICE ? 2
         : (svc === BLE.GAN_GEN3_SERVICE ? 3
         : (svc === BLE.GAN_GEN4_SERVICE ? 4 : 2));
   ganParseState = { lastSerial: -1, seen: false };
+  ganBatPkts = [];
   ganBattery = -1;
   { const gb = $('gan-batt'); if (gb) gb.textContent = '🔋 电量：未知'; }
   try {
@@ -803,6 +848,7 @@ async function ganReconnect(handle) {
   }, 3000);
   ganSetStatus('✅ 已重新连接 <b>' + (handle.name || '魔方') + '</b>！拧真魔方试试。');
   toast('已重新连接');
+  ganStayConnected = true;
   ganLogAutoStart();   /* 连上即自动记录封包 */
   ganGyroRef = null;   /* 整转联动：重新以当前朝向为基准 */
   if (typeof resetPracOrientation === 'function') resetPracOrientation();
@@ -822,12 +868,17 @@ function ganAppStateSetup() {
         ganSetStatus('已切到后台，魔方已释放。回到前台会自动重连。');
       }
     } else {
-      /* 回到前台：之前连过就自动重连 */
+      /* 回到前台：之前连过就自动重连（即便刚才意外断过也会触发） */
       if (ganLastHandle && !ganConn) {
-        ganSetStatus('正在重新连接魔方…');
+        ganSetStatus('正在自动重新连接魔方…');
+        ganStayConnected = true;
         ganReconnect(ganLastHandle);
       }
     }
   });
+  /* 额外保险：部分平台 visibilitychange 不可靠，再用 focus / pageshow 兜底 */
+  const fgRetry = () => { if (ganStayConnected && ganLastHandle && !ganConn && !document.hidden){ ganSetStatus('正在自动重新连接魔方…'); ganReconnect(ganLastHandle); } };
+  window.addEventListener('focus', fgRetry);
+  window.addEventListener('pageshow', fgRetry);
 }
 ganAppStateSetup();

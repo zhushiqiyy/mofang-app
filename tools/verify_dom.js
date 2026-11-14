@@ -32,9 +32,9 @@ JSDOM.fromFile(path.resolve('index.html'), {
       const base = JSON.stringify({ y:'#FFD500', r:'#E8121D', g:'#009E54', w:'#FFFFFF', o:'#FF6A00', b:'#0051BA' });
       check('COLORS preserved = classic', E('JSON.stringify(COLORS)') === base);
 
-      /* 2) 魔方皮肤 = 8 主题 + classic，都带 fx（除 classic） */
-      check('cube skins = 9 (classic+8)', E('Object.keys(SKINS.cube)').length === 9);
-      check('all themed cube skins have fx', E("Object.keys(SKINS.cube).filter(k=>k!=='classic').every(k=>SKINS.cube[k].fx)"));
+      /* 2) 魔方皮肤 = 9 特效 + 4 主题 + classic，都带 fx 或 theme（除 classic） */
+      check('cube skins = 13 (9 fx + 4 theme + classic)', E('Object.keys(SKINS.cube)').length === 13);
+      check('all non-classic cube skins have fx or theme', E("Object.keys(SKINS.cube).filter(k=>k!=='classic').every(k=>SKINS.cube[k].fx || SKINS.cube[k].theme)"));
 
       /* 3) 玩伴 = 6 个，每个都是分层模型（>=3 层、z 互不相同） */
       const compKeys = E('Object.keys(SKINS.comp)');
@@ -146,7 +146,7 @@ JSDOM.fromFile(path.resolve('index.html'), {
       w.go('skin');
       const skinHost = doc.getElementById('skin-host');
       check('skin room rendered', !!skinHost && skinHost.children.length >= 3);
-      check('skin room shows 9 cube skins', skinHost.querySelectorAll('.skin-cube').length === 9);
+      check('skin room shows 13 cube skins', skinHost.querySelectorAll('.skin-cube').length === 13);
       check('skin room shows 6 comp stages', skinHost.querySelectorAll('.stage3d').length === 6);
       check('no price/buy buttons remain', skinHost.textContent.indexOf('💎') < 0 && !skinHost.querySelector('[onclick*="buySkin"]'));
       check('equipped cards marked (galaxy cube + classic comp)', (() => {

@@ -156,6 +156,7 @@ function startPracTimer(){
 function pracReset(){
   pracStop(false);
   pracQueue.length = 0;
+  const sp = $('scramble-steps'); if (sp) sp.style.display = 'none';
   pracCube = solvedCube();
   pracMoves = 0;
   pracScrambleToks = [];
@@ -181,24 +182,69 @@ function pracStop(win){
 }
 
 function pracScramble(){
+  /* 默认：先出打乱步骤，让小朋友照着把手中魔方打乱，再进入复原（不再直接甩出打乱好的样子） */
+  pracScrambleSteps(false);
+}
+
+/* 打乱流程（两步式）：
+   ① 生成随机打乱序列，把"步骤"展示出来，屏幕魔方保持已复原（参照）；
+      小朋友照着步骤把<b>自己的</b>魔方拧乱——这样屏幕与实际始终一致。
+   ② 点「我已打乱完成」才把屏幕魔方切到打乱态、开始计时。 */
+let pracScrambleThenThink = false;
+function pracScrambleSteps(withThink){
   if (battle.active) battleQuit();
+  pracScrambleThenThink = !!withThink;
   pracStop(false);
   pracQueue.length = 0;
   const scr = randomScramble(20);
   pracScrambleToks = scr;
+  showScrambleSteps(scr);
+  /* 屏幕保持复原态作为参照，不提前展示打乱结果 */
+  pracCube = solvedCube();
+  pracMoves = 0;
+  pracRunning = false;
+  clearInterval(pracTimer);
+  $('prac-time').textContent = '0.0';
+  drawPrac({});
+  refreshPracUI();
+  $('prac-state').textContent = '请照步骤打乱';
+  toast('照着步骤把魔方打乱');
+}
+function showScrambleSteps(scr){
+  const host = $('scramble-steps');
+  if (!host) return;
+  host.style.display = 'block';
+  host.innerHTML =
+    '<div class="sub" style="margin-bottom:6px;">🎲 <b>打乱步骤</b>：照着下面每一步，把你的魔方拧乱（顺序从左到右）。拧完点「我已打乱完成」。</div>'
+    + '<div class="chunks">' + scr.map(t => '<span class="chunk">' + fmtTok2(t) + '</span>').join('') + '</div>'
+    + '<div class="row center" style="margin-top:10px;gap:8px;">'
+    + '<button class="btn blue sm" onclick="pracFinishScramble()">✅ 我已打乱完成，开始复原</button>'
+    + '<button class="btn alt sm" onclick="pracSkipScramble()">跳过（直接打乱）</button>'
+    + '</div>';
+}
+function pracApplyScrambleToScreen(){
   let c = solvedCube();
-  scr.forEach(t => { c = applyMove(c, moveOf(t)); });
-
+  pracScrambleToks.forEach(t => { c = applyMove(c, moveOf(t)); });
   pracCube = c;
   pracMoves = 0;
   pracRunning = false;
   clearInterval(pracTimer);
   $('prac-time').textContent = '0.0';
-  if (typeof recordTraining === 'function') recordTraining({ kind:'scramble', moves: scr.length, by:'程序' });
   drawPrac({});
   refreshPracUI();
   $('prac-state').textContent = '已打乱，开始拧';
-  toast('打乱了！拧一步就开始计时');
+}
+function pracFinishScramble(){
+  const host = $('scramble-steps'); if (host) host.style.display = 'none';
+  pracApplyScrambleToScreen();
+  if (typeof recordTraining === 'function') recordTraining({ kind:'scramble', moves: pracScrambleToks.length, by:'程序' });
+  toast('打乱好了！拧一步就开始计时');
+  if (pracScrambleThenThink){ pracScrambleThenThink = false; showCfopThink(); }
+}
+function pracSkipScramble(){
+  const host = $('scramble-steps'); if (host) host.style.display = 'none';
+  pracApplyScrambleToScreen();
+  toast('已打乱');
 }
 
 /* ---------------- 人机对战 ---------------- */

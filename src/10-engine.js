@@ -10,6 +10,14 @@
 let COLORS = { y:'#FFD500', r:'#E8121D', g:'#009E54', w:'#FFFFFF', o:'#FF6A00', b:'#0051BA' };
 /* 当前魔方皮肤的特效类型（null = 无特效）。drawCube 据此在魔方背后加泡泡/星芒/流光等 */
 let CUBE_FX = null;
+/* 当前魔方主题（每面按主题贴图）：null=经典六色平板；'bubble'/'star'/'heart'/'flower'=主题贴图 */
+let CUBE_THEME = null;
+
+/* 颜色工具：把 #rrggbb 调亮/调暗，用于主题贴图的高光与描边 */
+function hexToRgb(h){ h = h.replace('#',''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)]; }
+function rgbToHex(r,g,b){ const c = v => ('0' + Math.max(0, Math.min(255, Math.round(v))).toString(16)).slice(-2); return '#' + c(r) + c(g) + c(b); }
+function lighten(hex, t){ const a = hexToRgb(hex); return rgbToHex(a[0]+(255-a[0])*t, a[1]+(255-a[1])*t, a[2]+(255-a[2])*t); }
+function darken(hex, t){ const a = hexToRgb(hex); return rgbToHex(a[0]*(1-t), a[1]*(1-t), a[2]*(1-t)); }
 const COLOR_NAME = { y:'黄', r:'红', g:'绿', w:'白', o:'橙', b:'蓝' };
 const FACE_NAME = { U:'上', D:'下', F:'前', B:'后', R:'右', L:'左' };
 const FACE_ORDER = ['U','D','F','B','R','L'];
@@ -291,16 +299,21 @@ function cubeView(el){
   sheenBand.setAttribute('style', 'display:none');
   sheen.appendChild(sheenBand);
 
-  /* 顺序：fx(背) → glow(光晕) → base(暗底) → polys(贴纸) → sheen(扫光) → marks(高亮) */
+  /* 主题贴图层：每面按主题画泡泡/星星/爱心/花朵（无光晕，纯贴纸内贴图） */
+  const theme = document.createElementNS(SVGNS, 'g');
+  theme.setAttribute('class', 'cube-theme');
+
+  /* 顺序：fx(背) → glow(光晕) → base(暗底) → polys(贴纸) → sheen(扫光) → theme(主题) → marks(高亮) */
   svg.appendChild(fx);
   svg.appendChild(glow);
   svg.appendChild(base);
   polys.forEach(p => svg.appendChild(p));
   svg.appendChild(sheen);
+  svg.appendChild(theme);
   const marks = document.createElementNS(SVGNS, 'g');
   svg.appendChild(marks);
 
-  const cv = { uid, el, svg, polys, marks, base, fx, glow, sheen, sheenClip: clip, sheenBand, yaw: VIEW.yaw, pitch: VIEW.pitch, scale: 1, _fxKey: undefined, lastCube: undefined, lastOpt: {} };
+  const cv = { uid, el, svg, polys, marks, base, fx, glow, sheen, theme, sheenClip: clip, sheenBand, yaw: VIEW.yaw, pitch: VIEW.pitch, scale: 1, _fxKey: undefined, _themeKey: undefined, lastCube: undefined, lastOpt: {} };
 
   /* 拖动改变视角 */
   let dragging = false, lx = 0, ly = 0;
@@ -326,6 +339,64 @@ function cubeView(el){
 
   el._cv = cv;
   return cv;
+}
+
+/* 求一个四边形贴纸的"内切圆半径" ≈ 面积/周长，作为贴图大小基准 */
+function stickerInscribedR(pts){
+  const n = pts.length;
+  let area = 0;
+  for (let i=0;i<n;i++){ const a = pts[i], b = pts[(i+1)%n]; area += a[0]*b[1] - b[0]*a[1]; }
+  area = Math.abs(area) / 2;
+  let per = 0;
+  for (let i=0;i<n;i++){ const a = pts[i], b = pts[(i+1)%n]; per += Math.hypot(a[0]-b[0], a[1]-b[1]); }
+  return per > 0 ? area / per : 10;
+}
+
+/* 五芒星路径 */
+function starPath(cx, cy, R){
+  const ri = R * 0.42, pts = [];
+  for (let i=0;i<10;i++){
+    const ang = -Math.PI/2 + i * Math.PI/5;
+    const rad = (i % 2 === 0) ? R : ri;
+    pts.push((cx + Math.cos(ang)*rad).toFixed(2) + ' ' + (cy + Math.sin(ang)*rad).toFixed(2));
+  }
+  return 'M' + pts.join(' L') + ' Z';
+}
+
+/* 爱心路径（R ≈ 半高） */
+function heartPath(cx, cy, R){
+  const s = R / 16;
+  const X = dx => (cx + dx*s).toFixed(2), Y = dy => (cy + dy*s).toFixed(2);
+  return 'M' + X(0) + ' ' + Y(5)
+    + ' C ' + X(-9) + ' ' + Y(0) + ' ' + X(-16) + ' ' + Y(5) + ' ' + X(-16) + ' ' + Y(-2)
+    + ' C ' + X(-16) + ' ' + Y(-10) + ' ' + X(-6) + ' ' + Y(-12) + ' ' + X(0) + ' ' + Y(-5)
+    + ' C ' + X(6) + ' ' + Y(-12) + ' ' + X(16) + ' ' + Y(-10) + ' ' + X(16) + ' ' + Y(-2)
+    + ' C ' + X(16) + ' ' + Y(5) + ' ' + X(9) + ' ' + Y(0) + ' ' + X(0) + ' ' + Y(5) + ' Z';
+}
+
+/* 在 g 上画一个主题贴图（泡泡/星星/爱心/花朵），颜色取该贴纸颜色 */
+function drawThemeDecal(g, theme, cx, cy, r, color){
+  const A = SVGNS;
+  const el = (tag, attrs) => { const e = document.createElementNS(A, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const dk = darken(color, 0.14);
+  if (theme === 'bubble'){
+    g.appendChild(el('circle', { cx, cy, r: (r*0.92).toFixed(2), fill: color, stroke: dk, 'stroke-width': 1.2, opacity: 0.96 }));
+    g.appendChild(el('circle', { cx: (cx - r*0.30).toFixed(2), cy: (cy - r*0.30).toFixed(2), r: (r*0.20).toFixed(2), fill: '#ffffff', opacity: 0.85 }));
+  } else if (theme === 'star'){
+    g.appendChild(el('path', { d: starPath(cx, cy, r*0.95), fill: color, stroke: dk, 'stroke-width': 1, 'stroke-linejoin': 'round', opacity: 0.96 }));
+    g.appendChild(el('circle', { cx, cy, r: (r*0.16).toFixed(2), fill: '#ffffff', opacity: 0.85 }));
+  } else if (theme === 'heart'){
+    g.appendChild(el('path', { d: heartPath(cx, cy, r*1.05), fill: color, stroke: dk, 'stroke-width': 1, 'stroke-linejoin': 'round', opacity: 0.96 }));
+  } else if (theme === 'flower'){
+    for (let i=0;i<5;i++){
+      const ang = -Math.PI/2 + i * (Math.PI*2/5);
+      const px = cx + Math.cos(ang) * r*0.5, py = cy + Math.sin(ang) * r*0.5;
+      const petal = el('ellipse', { cx: px.toFixed(2), cy: py.toFixed(2), rx: (r*0.34).toFixed(2), ry: (r*0.50).toFixed(2), fill: color, stroke: dk, 'stroke-width': 0.8, opacity: 0.95 });
+      petal.setAttribute('transform', 'rotate(' + (ang*180/Math.PI + 90).toFixed(1) + ' ' + px.toFixed(2) + ' ' + py.toFixed(2) + ')');
+      g.appendChild(petal);
+    }
+    g.appendChild(el('circle', { cx, cy, r: (r*0.30).toFixed(2), fill: lighten(color, 0.55), stroke: dk, 'stroke-width': 0.8 }));
+  }
 }
 
 /* 主绘制
@@ -392,7 +463,9 @@ function drawCube(el, cube, opt){
   while (cv.base.firstChild) cv.base.removeChild(cv.base.firstChild);
   while (cv.glow.firstChild) cv.glow.removeChild(cv.glow.firstChild);
   while (cv.sheenClip.firstChild) cv.sheenClip.removeChild(cv.sheenClip.firstChild);
+  while (cv.theme.firstChild) cv.theme.removeChild(cv.theme.firstChild);
   const fxDef = CUBE_EFFECTS[CUBE_FX] || null;
+  const thDef = CUBE_THEME;   /* 当前主题（每面按主题贴图），null=经典六色平板 */
   for (const f in FACES){
     const o = FACES[f];
     const C2 = rot(o.C), u2 = rot(o.u), v2 = rot(o.v), n2 = rot(o.n);
@@ -426,19 +499,38 @@ function drawCube(el, cube, opt){
     }
   }
 
-  /* 贴纸：纯色填充（与分解图完全一致的配色），深色描边分出块面 */
-  const pal = COLORS;   /* 皮肤只换特效，不改这 6 个槽的颜色 */
+  /* 贴纸：主题皮肤 = 浅色调底 + 主题贴图；经典 = 纯色填充 */
+  const pal = COLORS;   /* 皮肤只换特效/主题，不改这 6 个槽的颜色 */
   for (const grp of groups){
     for (const it of grp.items){
       const node = cv.polys[it.i];
       node.style.display = '';
       node.setAttribute('points', it.pts.map(p => p[0].toFixed(2)+','+p[1].toFixed(2)).join(' '));
-      node.setAttribute('fill', pal[it.color] || '#999');
+      const baseCol = pal[it.color] || '#999';
+      const decoOp = (dimSet && dimSet.indexOf(it.f) >= 0) ? '0.22'
+                   : (opt.dim && !hlPos.length) ? '0.4' : '1';
+      if (thDef){
+        /* 主题皮肤：浅色膜作底，贴图本身是主角（整面同色→看完整图案） */
+        node.setAttribute('fill', lighten(baseCol, 0.62));
+      } else {
+        node.setAttribute('fill', baseCol);
+      }
       node.setAttribute('stroke', '#10151f');
       node.setAttribute('stroke-width', '1.1');
-      node.setAttribute('opacity', (dimSet && dimSet.indexOf(it.f) >= 0) ? '0.25' : '1');
-      if (opt.dim && !hlPos.length) node.setAttribute('opacity','0.45');
+      node.setAttribute('opacity', decoOp);
       cv.svg.appendChild(node);   /* 重排 = 深度排序 */
+
+      /* 主题贴图：每格中心画一个主题图形，颜色 = 该贴纸颜色 */
+      if (thDef){
+        const xs = it.pts.map(p => p[0]), ys = it.pts.map(p => p[1]);
+        const ccx = (xs[0]+xs[1]+xs[2]+xs[3]) / 4;
+        const ccy = (ys[0]+ys[1]+ys[2]+ys[3]) / 4;
+        const rr = stickerInscribedR(it.pts);
+        const g = document.createElementNS(SVGNS, 'g');
+        g.setAttribute('opacity', decoOp);
+        drawThemeDecal(g, thDef, ccx, ccy, rr, baseCol);
+        cv.theme.appendChild(g);
+      }
     }
   }
 

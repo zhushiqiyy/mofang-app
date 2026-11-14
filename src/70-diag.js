@@ -82,7 +82,7 @@ const DIAG_TESTS = [
       ganResetGyroBase();
       const pass = maxRot === 0;
       return { pass, detail: '静置 20 帧，单帧最大转角 = ' + maxRot.toFixed(3) + '°（应为 0）。',
-               fix: '若静置仍有转角：调大 GYRO_DEADZONE（当前 20）或提高 GYRO_SUSTAIN（当前 2），并检查 ganDecodeGyro 死区是否被绕过。' };
+               fix: '若静置仍有转角：调大 GYRO_DEAD_DEG（当前 2.0）或提高 GYRO_SUSTAIN（当前 3），并检查 ganDecodeGyro 死区是否被绕过。' };
     }
   },
   {
@@ -91,11 +91,11 @@ const DIAG_TESTS = [
     run(){
       ganResetGyroBase();
       const bytes = new Array(16).fill(0);
-      /* 模拟手腕匀速右转：每帧三个轴原始值递增 60（同方向、超死区） */
+      /* 模拟手腕匀速右转：每帧三个轴原始值递增 300（同方向、远超死区 2°，单帧 9° < 上限 12°） */
       let base = 0;
       let last = null;
       for (let i=0;i<6;i++){
-        base += 60;
+        base += 300;
         setInt16LE(bytes, 2, base);          /* x 轴 */
         setInt16LE(bytes, 4, base);          /* y 轴 */
         setInt16LE(bytes, 6, base);          /* z 轴 */
@@ -124,7 +124,7 @@ const DIAG_TESTS = [
       ganResetGyroBase();
       const pass = last.rot.x === 0 && last.rot.y === 0 && last.rot.z === 0;
       return { pass, detail: '连续 3 帧 5000 巨跳后转角 x=' + last.rot.x.toFixed(3) + '°（应为 0）。',
-               fix: '若尖峰导致飞转：调小 GYRO_MAXSTEP（当前 25°）让单帧误读被丢弃。' };
+               fix: '若尖峰导致飞转：调小 GYRO_MAXSTEP_DEG（当前 12°）让单帧误读被丢弃。' };
     }
   },
   {

@@ -219,6 +219,7 @@
     </div>
     <div class="viewwrap" style="margin-top:10px;"><div id="prac-3d"></div></div>
     <div class="viewctrl" id="prac-viewctrl"></div>
+    <div id="scramble-steps" class="card tight" style="display:none;margin-top:10px;background:#fff7e8;border:1.5px solid #ffcf7a;"></div>
 
     <div class="row center" style="margin-top:12px;">
       <div class="huge" id="prac-time" style="color:var(--blue)">0.0</div>
@@ -244,7 +245,7 @@
     <h3>🤖 主动接替 · CFOP 还原思路</h3>
     <div class="sub">不知道怎么拧回去？点「程序随机打乱并给思路」：先把魔方随机打乱，再把<b>还原思路</b>一步步拆给你看（十字→F2L→OLL→PLL），并自动识别当前顶层是哪一招 <b>OLL / PLL</b>。还能连 GAN 魔方，真魔方拧一步、屏幕跟一步并计时。</div>
     <div class="row center" style="margin-top:10px;gap:8px;">
-      <button class="btn blue sm" onclick="pracScramble(); showCfopThink();">🤖 程序打乱并给思路</button>
+      <button class="btn blue sm" onclick="pracScrambleSteps(true)">🤖 程序打乱并给思路</button>
       <button class="btn alt sm" onclick="showCfopThink()">💡 只看思路</button>
     </div>
     <div id="cfop-think" class="card tight" style="display:none;margin-top:12px;"></div>

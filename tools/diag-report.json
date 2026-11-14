@@ -1,7 +1,7 @@
 {
   "app": "cfop-kids",
   "what": "diagnostic",
-  "when": "2026-11-14T13:54:29.341Z",
+  "when": "2026-11-14T16:47:12.349Z",
   "ua": "node-diag-runner",
   "total": 10,
   "pass": 10,
@@ -108,7 +108,7 @@
       "severity": "high",
       "pass": true,
       "detail": "静置 20 帧，单帧最大转角 = 0.000°（应为 0）。",
-      "fix": "若静置仍有转角：调大 GYRO_DEADZONE（当前 20）或提高 GYRO_SUSTAIN（当前 2），并检查 ganDecodeGyro 死区是否被绕过。"
+      "fix": "若静置仍有转角：调大 GYRO_DEAD_DEG（当前 2.0）或提高 GYRO_SUSTAIN（当前 3），并检查 ganDecodeGyro 死区是否被绕过。"
     },
     {
       "id": "gyro-respond",
@@ -117,7 +117,7 @@
       "kind": "logic",
       "severity": "med",
       "pass": true,
-      "detail": "持续右转 6 帧后累计转角 x=1.80° y=1.80° z=1.80°。",
+      "detail": "持续右转 6 帧后累计转角 x=9.00° y=9.00° z=9.00°。",
       "fix": "若完全无响应：检查 GYRO_OFF 字节偏移与 GYRO_SCALE 是否命中真机布局；先用封包日志核对字节。"
     },
     {
@@ -128,7 +128,7 @@
       "severity": "med",
       "pass": true,
       "detail": "连续 3 帧 5000 巨跳后转角 x=0.000°（应为 0）。",
-      "fix": "若尖峰导致飞转：调小 GYRO_MAXSTEP（当前 25°）让单帧误读被丢弃。"
+      "fix": "若尖峰导致飞转：调小 GYRO_MAXSTEP_DEG（当前 12°）让单帧误读被丢弃。"
     },
     {
       "id": "gyro-clamp",

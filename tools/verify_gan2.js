@@ -266,10 +266,14 @@ function makeMockNative(w, opts) {
     check('原生路径：全程无 JS 错误', errors.length === 0, errors[0] || '');
     check('原生路径：MAC 已按设备名记住', w.eval("JSON.parse(localStorage.getItem('gan_mac_map'))['GANic2dT']") === CUBE_MAC);
 
-    /* 断开事件 */
+    /* 断开事件：自动重连开启时，断开瞬间会先报"魔方断开了，正在自动重连…"（含"断开"），
+       随后重连成功才翻成"已重新连接"。这里在断开回调返回后立即核验提示已出现。 */
     cubeState.onDisconnect && cubeState.onDisconnect();
-    await sleep(50);
-    check('原生路径：断开有提示', w.eval("document.querySelector('#gan-status').textContent.indexOf('断开') >= 0"));
+    check('原生路径：断开有提示', w.eval("document.querySelector('#gan-status').textContent.indexOf('断开') >= 0"),
+      w.eval("document.querySelector('#gan-status').textContent").slice(0, 60));
+    await sleep(400);   /* 给自动重连一点时间，确认能恢复且不报错 */
+    check('原生路径：自动重连后恢复连接', w.eval("document.querySelector('#gan-status').textContent.indexOf('已重新连接') >= 0"),
+      w.eval("document.querySelector('#gan-status').textContent").slice(0, 60));
     w.close();
   }
 

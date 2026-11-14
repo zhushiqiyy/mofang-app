@@ -394,7 +394,10 @@ const COMP_MODELS = {
 };
 
 /* ---------------- 皮肤定义 ----------------
-   魔方皮肤只带 fx（特效），六面基础颜色保持经典六色不变。全部免费。 */
+   魔方皮肤两类：
+   · 特效皮肤(fx)：背后加泡泡/星芒/光晕/流光等（保留六面基础色）。
+   · 主题皮肤(theme)：每个面按主题贴图（泡泡/星星/爱心/花朵），无光晕——整面同色即看完整图案。
+   两者六面基础颜色始终保留（经典六色）。全部免费。 */
 const SKINS = {
   cube: {
     classic:{ name:'经典六色', fx:null },
@@ -405,7 +408,11 @@ const SKINS = {
     galaxy: { name:'星河紫梦', fx:'galaxy' },
     aurora: { name:'极光绚烂', fx:'aurora' },
     bubble: { name:'泡泡糖',   fx:'bubble' },
-    brill:  { name:'流光彩钻', fx:'brill' }
+    brill:  { name:'流光彩钻', fx:'brill' },
+    thBubble:{ name:'泡泡主题', theme:'bubble', desc:'每面都是同色泡泡，整面还原=一整片泡泡' },
+    thStar:  { name:'星星主题', theme:'star',   desc:'每面都是同色星星，整面还原=满天星' },
+    thHeart: { name:'爱心主题', theme:'heart',  desc:'每面都是同色爱心，整面还原=一片爱心' },
+    thFlower:{ name:'花朵主题', theme:'flower', desc:'每面都是同色花朵，整面还原=一园花' }
   },
   /* 玩伴皮肤：aura = 展厅光环色 */
   comp: {
@@ -428,11 +435,12 @@ function initSkins(){
   setCubeSkin(curCubeSkin, true);   /* 仅设置特效，颜色保持经典 */
 }
 
-/* 换魔方特效（不负责重绘，由调用方决定何时刷新）。六面基础颜色始终不变 */
+/* 换魔方皮肤（特效或主题）。六面基础颜色始终不变 */
 function setCubeSkin(id, silent){
   const sk = SKINS.cube[id];
   if (!sk) return;
-  CUBE_FX = sk.fx || null;          /* 全站魔方（练习/感知/弹窗）都带上这套特效 */
+  CUBE_FX = sk.fx || null;          /* 特效皮肤：背后光晕/粒子 */
+  CUBE_THEME = sk.theme || null;    /* 主题皮肤：每面按主题贴图，无光晕 */
   curCubeSkin = id;
   if (!silent) saveStore();
 }
@@ -562,10 +570,15 @@ function renderSkinRoom(){
   if (!host) return;
   host.innerHTML = '';
 
-  host.appendChild(sectionTitle('🧊 魔方皮肤（保留六面基础色，只换特效）'));
-  const cg = el('div','skin-grid');
-  Object.keys(SKINS.cube).forEach(id => cg.appendChild(skinCard('cube', id)));
-  host.appendChild(cg);
+  host.appendChild(sectionTitle('🧊 魔方皮肤 · 特效（背后光晕/粒子，保留六面基础色）'));
+  const fg = el('div','skin-grid');
+  Object.keys(SKINS.cube).filter(id => !SKINS.cube[id].theme).forEach(id => fg.appendChild(skinCard('cube', id)));
+  host.appendChild(fg);
+
+  host.appendChild(sectionTitle('🌈 魔方皮肤 · 主题（每面主题贴图，无光晕）'));
+  const tg = el('div','skin-grid');
+  Object.keys(SKINS.cube).filter(id => !!SKINS.cube[id].theme).forEach(id => tg.appendChild(skinCard('cube', id)));
+  host.appendChild(tg);
 
   host.appendChild(sectionTitle('🤖 玩伴皮肤（3D 分层展示 · 高还原角色）'));
   const pg = el('div','skin-grid');
@@ -592,6 +605,8 @@ function skinCard(kind, id){
     setTimeout(() => drawSkinPreview(pv, id), 0);
     if (sk.fx && CUBE_EFFECTS[sk.fx] && CUBE_EFFECTS[sk.fx].desc){
       card.appendChild(el('div','skin-desc', CUBE_EFFECTS[sk.fx].desc));
+    } else if (sk.desc){
+      card.appendChild(el('div','skin-desc', sk.desc));
     }
   } else {
     const wrap = el('div','skin-comp');
@@ -614,12 +629,14 @@ function skinCard(kind, id){
   return card;
 }
 
-/* 用某个皮肤的特效画一个小预览（始终保留经典六色），画完还原当前 CUBE_FX */
+/* 用某个皮肤（特效或主题）画一个小预览（始终保留经典六色），画完还原当前状态 */
 function drawSkinPreview(node, id){
   if (typeof drawCube !== 'function') return;
   const sk = SKINS.cube[id];
-  const prevFx = CUBE_FX;
+  const prevFx = CUBE_FX, prevTheme = CUBE_THEME;
   CUBE_FX = sk.fx || null;
+  CUBE_THEME = sk.theme || null;
   drawCube(node, solvedCube(), {});
   CUBE_FX = prevFx;
+  CUBE_THEME = prevTheme;
 }

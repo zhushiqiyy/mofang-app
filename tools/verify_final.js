@@ -30,11 +30,13 @@ ok('皮肤导航入口', has('🎨皮肤') || has('皮肤小屋'));
 ok('免费「换上」按钮', has('换上'));
 
 console.log('== 3. 轴侧视图纯色贴纸（无渐变反光）==');
-ok('贴纸 fill 用纯色 pal[it.color]', has("node.setAttribute('fill', pal[it.color]"));
+ok('贴纸经典态仍用纯色 pal[it.color]', has("pal[it.color]"));
+ok('主题皮肤走浅色底+贴图分支', has('thDef') && has('drawThemeDecal'));
+ok('hexToRgb/lighten 着色函数存在（主题贴图用）', has('hexToRgb') && has('lighten') && has('darken'));
 ok('无 glossGrad 渐变函数', !has('glossGrad'));
-ok('无 hexToRgb 着色函数', !has('hexToRgb'));
 ok('cubeView 贴纸无 url(#g 渐变引用', !/pal\[it\.color\][\s\S]{0,200}url\(#g/.test(html));
 ok('默认无特效（CUBE_FX 初值 null）', /let CUBE_FX = null/.test(html));
+ok('默认无主题（CUBE_THEME 初值 null）', /let CUBE_THEME = null/.test(html));
 ok('扫光带默认隐藏（display:none）', has("sheenBand.setAttribute('style', 'display:none')"));
 ok('皮肤特效层保留（sheen-band-gloss/holo 仅在换装后激活）', has('sheen-band-gloss') && has('sheen-band-holo'));
 
