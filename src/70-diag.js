@@ -254,8 +254,13 @@ function runDiagnostics(){
 }
 
 /* ---------------- 云端：上传 / 调取（GitHub 仓库当作云库） ---------------- */
+/* 云端配置读取：浏览器里优先用界面实时值（ghLive），回退 store.cloud；Node 测试无 ghLive 时直接用 store.cloud */
+function diagCfg(){
+  if (typeof ghLive === 'function') return ghLive();
+  return (typeof store !== 'undefined' && store.cloud) || {};
+}
 function diagApiUrl(){
-  const c = (typeof store !== 'undefined' && store.cloud) || {};
+  const c = diagCfg();
   const owner = c.owner || 'zhushiqiyy', repo = c.repo || 'mofang-data';
   const path  = c.diagPath || 'diag/reports.json';
   const branch = c.branch || 'main';
@@ -263,7 +268,7 @@ function diagApiUrl(){
          '/contents/' + encodeURIComponent(path) + '?ref=' + encodeURIComponent(branch);
 }
 function diagRawUrl(){
-  const c = (typeof store !== 'undefined' && store.cloud) || {};
+  const c = diagCfg();
   const owner = c.owner || 'zhushiqiyy', repo = c.repo || 'mofang-data';
   const path  = c.diagPath || 'diag/reports.json';
   const branch = c.branch || 'main';
@@ -271,9 +276,9 @@ function diagRawUrl(){
 }
 /* 上传：把这次报告追加到云端历史（仓库里始终是 { app, runs:[...] }） */
 function uploadDiagnostics(silent){
-  const c = (typeof store !== 'undefined' && store.cloud) || {};
+  const c = diagCfg();
   if (!c.owner || !c.repo){ if(!silent && typeof $('diag-msg')!=='undefined') $('diag-msg').textContent = '⚠️ 请先在云端配置填 GitHub 用户名/仓库（并保存）。'; return; }
-  if (!c.token){ if(!silent && typeof $('diag-msg')!=='undefined') $('diag-msg').textContent = '⚠️ 需要个人访问令牌（PAT），在云端配置粘贴后保存。'; return; }
+  if (!c.token){ if(!silent && typeof $('diag-msg')!=='undefined') $('diag-msg').textContent = '⚠️ 需要个人访问令牌（PAT），在令牌框粘贴后点「🔍 校验令牌」确认有效。'; return; }
   if (!silent && typeof $('diag-msg')!=='undefined') $('diag-msg').textContent = '☁️ 正在上传诊断报告…';
   const path = c.diagPath || 'diag/reports.json';
   const branch = c.branch || 'main';
@@ -307,8 +312,14 @@ function uploadDiagnostics(silent){
       const box = $('diag-raw'); if (box) box.innerHTML = '<code>' + raw + '</code> <button class="btn ghost sm" onclick="copyDiagRaw()">📋 复制</button>';
     }
   }).catch(e => {
-    if (!silent && typeof $('diag-msg')!=='undefined')
-      $('diag-msg').textContent = '⚠️ 上传失败：' + (e && e.message || e) + '。常见：令牌无权限/仓库不存在/私有库需设为公开。';
+    if (!silent && typeof $('diag-msg')!=='undefined'){
+      const raw = (e && e.message) || ('' + e);
+      let tip = '。常见：令牌无权限/仓库不存在/私有库需设为公开。';
+      if (/401/.test(raw)) tip = '。→ 令牌无效/已过期/被撤销（401）：点云端配置「🔍 校验令牌」确认，再到 GitHub 重新生成 PAT。';
+      else if (/403/.test(raw)) tip = '。→ 令牌无权限（403）：经典令牌需 repo 范围，细粒度需该仓库 Contents:Read&Write。';
+      else if (/404/.test(raw)) tip = '。→ 仓库/文件不存在（404）：先到数据页点「+ 一键新建仓库」。';
+      $('diag-msg').textContent = '⚠️ 上传失败：' + raw + tip;
+    }
   });
 }
 /* 从云端调取历史报告（开发者分析用） */

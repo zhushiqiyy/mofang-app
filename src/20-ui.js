@@ -1143,6 +1143,40 @@ function saveDataCloud(){
   saveStore();
   $('data-cloud-msg').textContent = '✅ 已保存云端配置。';
 }
+/* 读取云端配置：优先用界面输入框的实时值，回退到已保存配置。
+   这样"填完直接点上传"也生效，不必强制先点保存配置（避免上传用了旧令牌）。 */
+function ghLive(){
+  const c = store.cloud || {};
+  const v = (id) => { const e = $(id); return e ? (e.value||'').trim() : ''; };
+  return {
+    mode:   c.mode || 'github',
+    owner:  v('gh-owner')   || c.owner  || 'zhushiqiyy',
+    repo:   v('gh-repo')    || c.repo   || 'mofang-data',
+    path:   v('gh-path')    || c.path   || 'training-data.json',
+    diagPath: v('gh-diagpath') || c.diagPath || 'diag/reports.json',
+    branch: v('gh-branch')  || c.branch || 'main',
+    token:  v('gh-token')   || c.token  || '',
+    auto:   (($('gh-auto')||{}).checked !== undefined) ? (($('gh-auto')||{}).checked) : (c.auto||false)
+  };
+}
+/* 一键校验当前令牌：直接打 GitHub 仓库接口，秒回"有效/过期/无权限/仓库不存在" */
+function testGhToken(){
+  const c = ghLive();
+  const out = $('gh-token-test');
+  if (!c.token){ if(out) out.textContent = '⚠️ 先在令牌框填入 PAT'; return; }
+  if(out) out.textContent = '🔄 校验中…';
+  const repoApi = 'https://api.github.com/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo);
+  fetch(repoApi, { headers: { 'Authorization':'Bearer '+c.token, 'Accept':'application/vnd.github+json' } })
+    .then(r => r.json().then(j => ({ status:r.status, login: j.owner && j.owner.login, msg: j.message })))
+    .then(({status, login, msg}) => {
+      if (status === 200) out.textContent = '✅ 令牌有效，且能访问 ' + c.owner + '/' + c.repo;
+      else if (status === 401) out.textContent = '❌ 令牌无效 / 已过期 / 被撤销（401）——请重新生成 PAT';
+      else if (status === 403) out.textContent = '⚠️ 令牌有效但无该仓库权限（403）——范围不对：经典令牌需 repo，细粒度需该仓库 Contents:Read&Write';
+      else if (status === 404) out.textContent = '⚠️ 仓库不存在（404）——点「+ 一键新建仓库」或核对 ' + c.owner + '/' + c.repo;
+      else out.textContent = '⚠️ 校验返回 ' + status + (msg ? '：' + msg : '');
+    })
+    .catch(e => { if(out) out.textContent = '⚠️ 校验失败：' + (e&&e.message||e); });
+}
 function uploadData(){
   const m = (store.cloud && store.cloud.mode) || 'github';
   if (m === 'url'){
@@ -1159,9 +1193,9 @@ function uploadData(){
 /* 把训练数据写入 GitHub 仓库里的一个 JSON 文件（即"云端数据库"）。
    用 GitHub Contents API：先取旧文件合并、再写回。静默模式（auto=true）失败不弹导出。 */
 function uploadGithub(silent){
-  const c = store.cloud;
+  const c = ghLive();
   if (!c || !c.owner || !c.repo){ if(!silent) $('data-cloud-msg').textContent = '⚠️ 请先填 GitHub 用户名和仓库名（并保存配置）。'; return; }
-  if (!c.token){ if(!silent) $('data-cloud-msg').textContent = '⚠️ 需要个人访问令牌（PAT）。在令牌框粘贴后保存配置。'; return; }
+  if (!c.token){ if(!silent) $('data-cloud-msg').textContent = '⚠️ 需要个人访问令牌（PAT）。在令牌框粘贴后点「🔍 校验令牌」确认有效。'; return; }
   if (!silent) $('data-cloud-msg').textContent = '☁️ 正在上传到 GitHub…';
   const path = c.path || 'training-data.json';
   const branch = c.branch || 'main';
@@ -1200,15 +1234,19 @@ function uploadGithub(silent){
     }
   }).catch(e => {
     if (!silent){
-      $('data-cloud-msg').textContent = '⚠️ 上传失败：' + (e && e.message || e) +
-        '。常见原因：令牌无权限 / 仓库不存在 / 私有库需设为公开我才能看。已改为导出 JSON 到本机。';
+      const raw = (e && e.message) || ('' + e);
+      let tip = '。已改为导出 JSON 到本机。';
+      if (/401/.test(raw)) tip = '。→ 令牌无效/已过期/被撤销（401）：请点「🔍 校验令牌」确认，再到 GitHub 重新生成 PAT。已改为导出 JSON 到本机。';
+      else if (/403/.test(raw)) tip = '。→ 令牌无权限（403）：经典令牌需 repo 范围，细粒度令牌需该仓库 Contents:Read&Write。已改为导出 JSON 到本机。';
+      else if (/404/.test(raw)) tip = '。→ 仓库/文件不存在（404）：先点「+ 一键新建仓库」，或核对用户名/仓库名拼写。已改为导出 JSON 到本机。';
+      $('data-cloud-msg').textContent = '⚠️ 上传失败：' + raw + tip;
       exportData();
     }
   });
 }
 /* 用当前令牌一键新建一个公开仓库当云库（无需离开 App） */
 function createGhRepo(){
-  const c = store.cloud;
+  const c = ghLive();
   if (!c || !c.token){ $('data-cloud-msg').textContent = '⚠️ 先填令牌才能建仓库。'; return; }
   const repo = (c.repo || 'mofang-data');
   $('data-cloud-msg').textContent = '🔧 正在创建仓库 ' + repo + ' …';

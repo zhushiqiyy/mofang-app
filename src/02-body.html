@@ -399,6 +399,10 @@
         <input id="gh-diagpath" class="inp" placeholder="诊断报告路径（默认 diag/reports.json）">
         <input id="gh-token" class="inp" type="password" placeholder="个人访问令牌 PAT（仅该仓库 Contents 读写）" style="grid-column:1 / -1;">
       </div>
+      <div class="row" style="margin-top:8px;gap:8px;align-items:center;">
+        <button class="btn ghost sm" onclick="testGhToken()">🔍 校验令牌</button>
+        <span id="gh-token-test" class="sub"></span>
+      </div>
       <div class="row center" style="margin-top:10px;gap:10px;flex-wrap:wrap;">
         <button class="btn alt sm" onclick="createGhRepo()">➕ 一键新建仓库</button>
         <label style="font-size:13px;"><input type="checkbox" id="gh-auto"> 有新记录自动上传</label>
