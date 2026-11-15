@@ -49,6 +49,16 @@ ok('applyShade 动态光照', has('applyShade'));
 ok('translateZ 深度层', has('translateZ'));
 ok('preserve-3d', has('preserve-3d'));
 
+console.log('== 4b. 真 3D 玩伴（本地 GLB + three.js）==');
+ok('Mascot3D 引擎模块挂载', has('window.Mascot3D'));
+const mascot3dSrc = fs.existsSync(path.join(__dirname, '..', 'vendor/three/mascot3d.js')) ? fs.readFileSync(path.join(__dirname, '..', 'vendor/three/mascot3d.js'), 'utf8') : '';
+ok('GLTFLoader 加载 GLB（引擎文件内）', mascot3dSrc.indexOf('GLTFLoader') >= 0 && /\.glb/.test(mascot3dSrc));
+ok('importmap 映射 three 到本地', has('importmap') && has('./vendor/three/three.module.js'));
+ok('module 引擎入口', has('type="module"') && has('mascot3d.js'));
+ok('4 个助手模型齐全', ['conan.glb','ange.glb','pika.glb','nailong.glb'].every(f => fs.existsSync(path.join(__dirname, '..', 'models', f))));
+ok('本地 three.js 引擎齐全', ['three.module.js','loaders/GLTFLoader.js','controls/OrbitControls.js','utils/BufferGeometryUtils.js'].every(f => fs.existsSync(path.join(__dirname, '..', 'vendor/three', f))));
+ok('3D 加载失败降级回 SVG 分层', has('companionSvgMarkup') && has('onFail'));
+
 console.log('== 5. 五大 named 玩伴 + 8 皮肤 ==');
 for (const c of ['迪迦', '天女兽', '柯南', '李星云', '皮卡丘']) ok('玩伴 ' + c, has(c));
 ok('COMP_MODELS 模型表', has('COMP_MODELS'));
@@ -75,7 +85,8 @@ if (extRefs.length) console.log('    外链: ' + extRefs.join(', '));
 ok('单文件 ≤ 400KB', html.length < 400 * 1024);
 
 console.log('== 8. 结构完整 ==');
-ok('script 开闭标签配对', count('<script>') === count('</script>'));
+/* 开标签含带属性的 <script type=...>/<script src=...>，用正则匹配 <script 后跟空白或 > */
+ok('script 开闭标签配对', (html.match(/<script[\s>]/g) || []).length === count('</script>'));
 ok('</html> 收尾', has('</html>'));
 ok('无 TODO/FIXME 残留', !has('TODO') && !has('FIXME'));
 ok('无 console.log 调试残留', !has('console.log'));

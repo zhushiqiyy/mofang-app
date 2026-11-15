@@ -39,9 +39,17 @@ if (data.indexOf('</scr' + 'ipt>') >= 0) { console.error('数据中含 </script>
 
 html += '<script>\n' + data + '\n</scr' + 'ipt>\n';
 html += '<script>\n' + js + '\n</scr' + 'ipt>\n';
+/* 真 3D 玩伴引擎：ES module + importmap（放在业务脚本之后、body 结束前） */
+html += '<script type="importmap">\n'
+      + '{"imports":{"three":"./vendor/three/three.module.js"}}\n'
+      + '</scr' + 'ipt>\n';
+html += '<script type="module" src="./vendor/three/mascot3d.js"></scr' + 'ipt>\n';
 html += '</body>\n</html>\n';
 
 fs.writeFileSync(path.join(ROOT, 'index.html'), html);
+
+/* 复制 3D 玩伴资源（three.js 引擎 + 4 个 GLB）到发布根目录 */
+copy3DAssets(ROOT);
 
 /* 复制 PWA 资源（manifest / service worker / 图标）到根目录，随站点一起发布 */
 const BUILD_ID = Date.now().toString(36);
@@ -88,5 +96,25 @@ function buildNative() {
     const src = path.join(ROOT, f);
     if (fs.existsSync(src)) fs.copyFileSync(src, path.join(wwwDir, f));
   }
+  /* 3D 玩伴资源（引擎 + 模型）一并打包进原生 App */
+  copy3DAssets(wwwDir);
   console.log('   www/ 已更新（capacitor.js + gan-cube.js + index.html + 资源）');
+}
+
+/* 递归复制 3D 资源目录（vendor/three + models）到目标发布目录 */
+function copy3DAssets(dest){
+  for (const dir of ['vendor/three', 'models']) {
+    const srcDir = path.join(ROOT, dir);
+    const dstDir = path.join(dest, dir);
+    if (!fs.existsSync(srcDir)) continue;
+    fs.mkdirSync(dstDir, { recursive: true });
+    (function walk(sd, dd){
+      for (const f of fs.readdirSync(sd)) {
+        if (f.startsWith('_')) continue; // 跳过 _原始备份 等辅助目录，避免打进离线包
+        const sp = path.join(sd, f), dp = path.join(dd, f);
+        if (fs.statSync(sp).isDirectory()) { fs.mkdirSync(dp, { recursive: true }); walk(sp, dp); }
+        else fs.copyFileSync(sp, dp);
+      }
+    })(srcDir, dstDir);
+  }
 }

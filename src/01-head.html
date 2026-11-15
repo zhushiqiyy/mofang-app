@@ -419,9 +419,18 @@
   .companion3d{ display:flex; gap:16px; align-items:center; }
   .companion3d .stage3d{ flex:0 0 auto; }
   .companion3d .companion-info{ flex:1; min-width:0; }
+  /* 真 3D 玩伴：canvas 舞台（尺寸需明确，WebGL 才能正确布局） */
+  .companion-stage{ flex:0 0 auto; width:200px; }
+  .m3d-host{ position:relative; width:200px; height:210px; margin:0 auto; cursor:grab; touch-action:none; }
+  .m3d-host:active{ cursor:grabbing; }
+  .m3d-host.mini{ width:140px; height:150px; }
+  .m3d-badge{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    font-size:12px; color:var(--sub); white-space:nowrap; pointer-events:none; }
+  .skin-comp .m3d-host{ margin:0 auto; }
   @media (max-width:420px){
     .companion3d{ flex-direction:column; align-items:flex-start; }
     .companion3d .stage3d{ margin:0; }
+    .companion-stage{ width:100%; }
   }
   .stage3d{ position:relative; width:200px; height:210px; margin:0 auto; perspective:760px; cursor:grab; touch-action:none; }
   .stage3d:active{ cursor:grabbing; }

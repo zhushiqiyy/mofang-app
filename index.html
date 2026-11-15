@@ -419,9 +419,18 @@
   .companion3d{ display:flex; gap:16px; align-items:center; }
   .companion3d .stage3d{ flex:0 0 auto; }
   .companion3d .companion-info{ flex:1; min-width:0; }
+  /* 真 3D 玩伴：canvas 舞台（尺寸需明确，WebGL 才能正确布局） */
+  .companion-stage{ flex:0 0 auto; width:200px; }
+  .m3d-host{ position:relative; width:200px; height:210px; margin:0 auto; cursor:grab; touch-action:none; }
+  .m3d-host:active{ cursor:grabbing; }
+  .m3d-host.mini{ width:140px; height:150px; }
+  .m3d-badge{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    font-size:12px; color:var(--sub); white-space:nowrap; pointer-events:none; }
+  .skin-comp .m3d-host{ margin:0 auto; }
   @media (max-width:420px){
     .companion3d{ flex-direction:column; align-items:flex-start; }
     .companion3d .stage3d{ margin:0; }
+    .companion-stage{ width:100%; }
   }
   .stage3d{ position:relative; width:200px; height:210px; margin:0 auto; perspective:760px; cursor:grab; touch-action:none; }
   .stage3d:active{ cursor:grabbing; }
@@ -6876,6 +6885,33 @@ const PIKA_HEAD =
 + '<path d="M95 17 l2.6 -5 0.6 5 5 0.6 -5 0.8 -0.6 5 -2.6 -5 -5 -0.8 Z" fill="#ffe14d" opacity=".9"/>'
 + '</svg>';
 
+/* ---------------- 奶龙（降级用简笔，正常走真 3D GLB） ---------------- */
+const NL_FAR =
+'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
++ '<path d="M46 60 Q60 54 74 60 L80 96 Q60 104 40 96 Z" fill="#ffcf5a" opacity=".5"/>'
++ '</svg>';
+const NL_MID =
+'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
++ '<path d="M50 92 L58 92 L57 106 L51 106 Z" fill="#f5b733"/><path d="M62 92 L70 92 L69 106 L63 106 Z" fill="#f5b733"/>'
++ '<path d="M42 56 Q60 46 78 56 L82 94 Q60 104 38 94 Z" fill="#ffd45e" stroke="#e9a81e" stroke-width="1.2"/>'
++ '<path d="M50 66 Q60 72 70 66" stroke="#ffe9a8" stroke-width="3" fill="none" stroke-linecap="round"/>'
++ '<path d="M78 86 Q96 84 92 70" stroke="#ffd45e" stroke-width="8" fill="none" stroke-linecap="round"/>'
++ '</svg>';
+const NL_NEAR =
+'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
++ '<path d="M42 62 Q34 68 34 80" stroke="#ffd45e" stroke-width="8" fill="none" stroke-linecap="round"/>'
++ '<path d="M78 62 Q86 68 86 78" stroke="#ffd45e" stroke-width="8" fill="none" stroke-linecap="round"/>'
++ '</svg>';
+const NL_HEAD =
+'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
++ '<ellipse cx="60" cy="40" rx="20" ry="18" fill="#ffd968" stroke="#e9a81e" stroke-width="1.2"/>'
++ '<path d="M44 26 Q42 14 50 22 Z" fill="#ffd45e"/><path d="M76 26 Q78 14 70 22 Z" fill="#ffd45e"/>'
++ '<circle cx="52" cy="40" r="3.2" fill="#2b2b2b"/><circle cx="68" cy="40" r="3.2" fill="#2b2b2b"/>'
++ '<circle cx="53" cy="39" r="1" fill="#fff"/><circle cx="69" cy="39" r="1" fill="#fff"/>'
++ '<ellipse cx="60" cy="50" rx="4" ry="2.6" fill="#ffe9a8"/>'
++ '<path d="M55 55 Q60 59 65 55" stroke="#c98a1a" stroke-width="1.4" fill="none" stroke-linecap="round"/>'
++ '</svg>';
+
 /* ---------------- 默认小助手（机甲风） ---------------- */
 const CL_FAR =
 '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
@@ -6946,6 +6982,12 @@ const COMP_MODELS = {
     { z:0,    art:PIKA_MID },
     { z:-10,  art:PIKA_NEAR },
     { z:60,   art:PIKA_HEAD }
+  ]},
+  nailong:{ layers:[
+    { z:-50,  art:NL_FAR },
+    { z:0,    art:NL_MID },
+    { z:-10,  art:NL_NEAR },
+    { z:60,   art:NL_HEAD }
   ]}
 };
 
@@ -6977,7 +7019,8 @@ const SKINS = {
     ange:   { name:'天女兽',       aura:'#ffd45e' },
     conan:  { name:'名侦探柯南',   aura:'#3a63b8' },
     lixing: { name:'天暗星李星云', aura:'#39d6e0' },
-    pika:   { name:'皮卡丘',       aura:'#ffd83d' }
+    pika:   { name:'皮卡丘',       aura:'#ffd83d' },
+    nailong:{ name:'奶龙',         aura:'#ffcf5a' }
   }
 };
 
@@ -7016,8 +7059,21 @@ function equipSkin(kind, id){
    二、3D 分层舞台
    ========================================================================= */
 
-/* 生成分层 3D 舞台：每层一个 div（不同 translateZ），并自动复制背板 */
+/* 真 3D 玩伴角色（有 GLB 模型）：柯南 / 天女兽 / 皮卡丘 / 奶龙。
+   其余角色（小助手/迪迦/李星云）没有模型，继续用下面的 SVG 分层舞台。 */
+function hasReal3D(id){ return !!(window.Mascot3D && window.Mascot3D.has3D && window.Mascot3D.has3D(id)); }
+
+/* 生成玩伴舞台：有真 3D 模型的角色用 WebGL host，其余用 SVG 分层 */
 function companion3DMarkup(id, mini){
+  if (hasReal3D(id)){
+    return '<div class="m3d-host' + (mini ? ' mini' : '') + '" data-role="' + id + '"></div>'
+      + '<div class="stage-hint" style="position:static;display:block;text-align:center;margin-top:2px">🖐 拖动旋转</div>';
+  }
+  return companionSvgMarkup(id, mini);
+}
+
+/* 原 SVG 分层舞台（无 3D 模型 / 加载失败降级用） */
+function companionSvgMarkup(id, mini){
   const m = COMP_MODELS[id] || COMP_MODELS.classic;
   const sk = SKINS.comp[id] || SKINS.comp.classic;
   const layers = mini ? m.layers.filter(L => L.z >= -80) : m.layers;
@@ -7037,6 +7093,22 @@ function companion3DMarkup(id, mini){
     + '<div class="stage-hint">🖐 拖动旋转</div>'
     + '</div>';
   return h;
+}
+
+/* 给 host 挂载 3D 玩伴；失败时降级回 SVG 分层舞台 */
+function mountCompanion3D(host, id, mini){
+  if (!host || !hasReal3D(id)) return false;
+  try {
+    window.Mascot3D.mount(host, id, {
+      mini: !!mini,
+      onFail: () => { host.innerHTML = companionSvgMarkup(id, mini); const st = host.querySelector('.stage3d'); if (st) mountStage3D(st); }
+    });
+    return true;
+  } catch (e) {
+    host.innerHTML = companionSvgMarkup(id, mini);
+    const st = host.querySelector('.stage3d'); if (st) mountStage3D(st);
+    return false;
+  }
 }
 
 /* rAF 驱动所有已挂载的舞台：自动摆动 + 拖动旋转 + 松手回正 + 动态受光 */
@@ -7106,7 +7178,7 @@ function renderCompanion(host){
   const sk = SKINS.comp[curCompSkin] || SKINS.comp.classic;
   host.innerHTML =
     '<div class="companion3d">'
-    + companion3DMarkup(curCompSkin)
+    + '<div class="companion-stage">' + companion3DMarkup(curCompSkin) + '</div>'
     + '<div class="companion-info">'
       + '<div class="companion-name">' + sk.name + ' <span class="sub">陪你练魔方</span></div>'
       + '<div class="companion-bubble">' + companionSay() + '</div>'
@@ -7115,8 +7187,20 @@ function renderCompanion(host){
       + '</div>'
     + '</div>'
     + '</div>';
-  mountStage3D(host.querySelector('.stage3d'));
+  const stage = host.querySelector('.companion-stage');
+  const mhost = stage && stage.querySelector('.m3d-host');
+  if (mhost) mountCompanion3D(mhost, curCompSkin, false);
+  else { const st = host.querySelector('.stage3d'); if (st) mountStage3D(st); }
 }
+
+/* 3D 引擎是异步 module：就绪后把当前页玩伴重挂一次（首页/实战页/皮肤小屋） */
+window.addEventListener('mascot3d-ready', () => {
+  try {
+    const hc = $('home-companion'); if (hc && hc.offsetParent !== null) renderCompanion(hc);
+    const hp = $('practice-companion'); if (hp && hp.offsetParent !== null) renderCompanion(hp);
+    if (typeof currentPage !== 'undefined' && currentPage === 'skin' && typeof renderSkinRoom === 'function') renderSkinRoom();
+  } catch (e) {}
+});
 
 /* =========================================================================
    三、皮肤小屋（所有皮肤免费直接换）
@@ -7168,7 +7252,11 @@ function skinCard(kind, id){
     const wrap = el('div','skin-comp');
     wrap.innerHTML = companion3DMarkup(id, true);
     card.appendChild(wrap);
-    setTimeout(() => { const st = wrap.querySelector('.stage3d'); if (st) mountStage3D(st); }, 0);
+    setTimeout(() => {
+      const mhost = wrap.querySelector('.m3d-host');
+      if (mhost) mountCompanion3D(mhost, id, true);
+      else { const st = wrap.querySelector('.stage3d'); if (st) mountStage3D(st); }
+    }, 0);
   }
 
   card.appendChild(el('div','skin-name', sk.name));
@@ -7361,5 +7449,9 @@ function roadGo(i){
 })();
 
 </script>
+<script type="importmap">
+{"imports":{"three":"./vendor/three/three.module.js"}}
+</script>
+<script type="module" src="./vendor/three/mascot3d.js"></script>
 </body>
 </html>
