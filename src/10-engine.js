@@ -313,7 +313,7 @@ function cubeView(el){
   const marks = document.createElementNS(SVGNS, 'g');
   svg.appendChild(marks);
 
-  const cv = { uid, el, svg, polys, marks, base, fx, glow, sheen, theme, sheenClip: clip, sheenBand, yaw: VIEW.yaw, pitch: VIEW.pitch, scale: 1, _fxKey: undefined, _themeKey: undefined, lastCube: undefined, lastOpt: {} };
+  const cv = { uid, el, svg, polys, marks, base, fx, glow, sheen, theme, defs, sheenClip: clip, sheenBand, yaw: VIEW.yaw, pitch: VIEW.pitch, scale: 1, _fxKey: undefined, _themeKey: undefined, lastCube: undefined, lastOpt: {} };
 
   /* 拖动改变视角 */
   let dragging = false, lx = 0, ly = 0;
@@ -399,6 +399,61 @@ function drawThemeDecal(g, theme, cx, cy, r, color){
   }
 }
 
+/* 取某面当前的主色（中心贴纸色 = 该面基本色）：主题壁画用它当主色，保证"主色调贴近基本色" */
+function palOfFace(cube, f){ return COLORS[cube[f][4]] || '#999'; }
+
+/* 整面主题壁画：在面局部坐标 (a,b)∈[-1,1] 画一幅完整图案，
+   proj(a,b) 把局部坐标投影到屏幕。主色 col 取该面的基本色——
+   于是六个面是同一个主题（都画花/星/心/泡泡），但每面主色贴近它自己的底色。 */
+function drawThemeMural(g, theme, proj, col){
+  const A = SVGNS;
+  const el = (tag, attrs) => { const e = document.createElementNS(A, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const hi = lighten(col, 0.42), hi2 = lighten(col, 0.68), dk = darken(col, 0.28);
+  const poly = (pts, attrs) => {
+    const s = pts.map(p => { const q = proj(p[0], p[1]); return q[0].toFixed(2)+','+q[1].toFixed(2); }).join(' ');
+    g.appendChild(el('polygon', Object.assign({ points:s, 'stroke-linejoin':'round' }, attrs)));
+  };
+  const circPts = (cx, cy, r, n) => { const out=[]; for(let i=0;i<n;i++){ const t=i/n*Math.PI*2; out.push([cx+Math.cos(t)*r, cy+Math.sin(t)*r]); } return out; };
+  const ellipsePts = (cx, cy, rx, ry, deg, n) => {
+    const out=[], a=deg*Math.PI/180, ca=Math.cos(a), sa=Math.sin(a);
+    for(let i=0;i<n;i++){ const t=i/n*Math.PI*2, x=Math.cos(t)*rx, y=Math.sin(t)*ry;
+      out.push([cx + x*ca-y*sa, cy + x*sa+y*ca]); }
+    return out;
+  };
+  const starLocal = (cx,cy,R,r) => { const p=[]; for(let i=0;i<10;i++){ const ang=-Math.PI/2+i*Math.PI/5, rad=i%2?r:R; p.push([cx+Math.cos(ang)*rad, cy+Math.sin(ang)*rad]); } return p; };
+  const heartLocal = (cx,cy,s) => { const p=[]; for(let i=0;i<32;i++){ const t=i/32*Math.PI*2; const x=Math.pow(Math.sin(t),3); const y=(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))/16; p.push([cx+x*s, cy-y*s]); } return p; };
+  const corners = [[-0.80,-0.80],[0.80,-0.80],[-0.80,0.80],[0.80,0.80]];
+
+  if (theme === 'flower'){
+    const R=0.80;
+    for(let i=0;i<6;i++){
+      const ang=i*Math.PI/3, px=Math.cos(ang)*R*0.60, py=Math.sin(ang)*R*0.60;
+      poly(ellipsePts(px,py,R*0.44,R*0.70, ang*180/Math.PI+90, 16),
+        { fill:(i%2?hi:col), stroke:dk, 'stroke-width':0.6, opacity:0.97 });
+    }
+    poly(circPts(0,0,R*0.40,20), { fill:hi2, stroke:dk, 'stroke-width':0.7 });
+    corners.forEach(([x,y])=>{
+      for(let i=0;i<5;i++){ const ang=i*Math.PI*2/5, px=x+Math.cos(ang)*0.18, py=y+Math.sin(ang)*0.18;
+        poly(ellipsePts(px,py,0.11,0.19,ang*180/Math.PI+90,12), { fill:hi, stroke:dk, 'stroke-width':0.4, opacity:0.95 }); }
+      poly(circPts(x,y,0.10,12), { fill:hi2 });
+    });
+  } else if (theme === 'star'){
+    poly(starLocal(0,0,0.92,0.40), { fill:col, stroke:dk, 'stroke-width':1 });
+    poly(starLocal(0,0,0.40,0.18), { fill:hi2, opacity:0.9 });
+    corners.forEach(([x,y])=> poly(starLocal(x,y,0.28,0.12), { fill:hi, stroke:dk, 'stroke-width':0.5 }));
+  } else if (theme === 'heart'){
+    poly(heartLocal(0,0,0.92), { fill:col, stroke:dk, 'stroke-width':1 });
+    poly(heartLocal(-0.16,0.16,0.32), { fill:hi2, opacity:0.75 });
+    [[-0.78,-0.72],[0.78,-0.72]].forEach(([x,y])=> poly(heartLocal(x,y,0.30), { fill:hi, stroke:dk, 'stroke-width':0.5 }));
+  } else if (theme === 'bubble'){
+    const bs = [[0,0,0.68],[-0.68,-0.58,0.36],[0.66,-0.52,0.40],[-0.58,0.66,0.32],[0.64,0.64,0.28]];
+    bs.forEach(([x,y,r],i)=>{
+      poly(circPts(x,y,r,20), { fill:(i%2?hi:col), stroke:dk, 'stroke-width':0.7, opacity:0.96 });
+      poly(circPts(x-r*0.30,y-r*0.30,r*0.22,12), { fill:'#ffffff', opacity:0.8 });
+    });
+  }
+}
+
 /* 主绘制
    opt: { hl:[{pos:[x,y,z], color, label}], dim:bool, move:{axis,ang,vals}, showAxis }
 */
@@ -464,8 +519,39 @@ function drawCube(el, cube, opt){
   while (cv.glow.firstChild) cv.glow.removeChild(cv.glow.firstChild);
   while (cv.sheenClip.firstChild) cv.sheenClip.removeChild(cv.sheenClip.firstChild);
   while (cv.theme.firstChild) cv.theme.removeChild(cv.theme.firstChild);
+  /* 清理上一帧的主题壁画 defs（clipPath + 整幅画），避免 id 冲突与内存堆积 */
+  if (cv.defs){
+    const olds = cv.defs.querySelectorAll('[data-th]');
+    for (let i=0;i<olds.length;i++) olds[i].parentNode.removeChild(olds[i]);
+  }
   const fxDef = CUBE_EFFECTS[CUBE_FX] || null;
   const thDef = CUBE_THEME;   /* 当前主题（每面按主题贴图），null=经典六色平板 */
+  /* 主题模式：每个可见面生成一次"整幅主题画"，主色 = 该面中心底色（贴近基本色），
+     之后每个贴纸用 clipPath 从整幅画里裁出自己那一格 —— 拼起来是完整一整幅图。 */
+  const faceMural = {};      /* face -> clipPathId */
+  if (thDef && cv.defs){
+    for (const f in FACES){
+      const o = FACES[f];
+      const C2 = rot(o.C), u2 = rot(o.u), v2 = rot(o.v), n2 = rot(o.n);
+      if (toView(n2, yaw, pitch)[1] <= 0.001) continue;   /* 背向镜头，不必生成 */
+      const proj = (a,b) => {
+        const p3 = [ C2[0]*SURF + u2[0]*1.53*a + v2[0]*1.53*b,
+                     C2[1]*SURF + u2[1]*1.53*a + v2[1]*1.53*b,
+                     C2[2]*SURF + u2[2]*1.53*a + v2[2]*1.53*b ];
+        const v = toView(p3, yaw, pitch);
+        return [cx + v[0]*S, cy - v[2]*S];
+      };
+      const mainCol = palOfFace(cube, f);   /* 该面中心色 = 基本色，主题主色贴近它 */
+      const mural = document.createElementNS(SVGNS, 'g');
+      drawThemeMural(mural, thDef, proj, mainCol);
+      /* 整幅画作为一个 clipPath 的内容：每格贴纸通过 <use> 引用它并裁自己的四边形 */
+      const artId = 'thArt' + cv.uid + '-' + f;
+      mural.setAttribute('id', artId);
+      mural.setAttribute('data-th', '1');
+      cv.defs.appendChild(mural);
+      faceMural[f] = artId;
+    }
+  }
   for (const f in FACES){
     const o = FACES[f];
     const C2 = rot(o.C), u2 = rot(o.u), v2 = rot(o.v), n2 = rot(o.n);
@@ -510,8 +596,8 @@ function drawCube(el, cube, opt){
       const decoOp = (dimSet && dimSet.indexOf(it.f) >= 0) ? '0.22'
                    : (opt.dim && !hlPos.length) ? '0.4' : '1';
       if (thDef){
-        /* 主题皮肤：浅色膜作底，贴图本身是主角（整面同色→看完整图案） */
-        node.setAttribute('fill', lighten(baseCol, 0.62));
+        /* 主题皮肤：底面用浅色膜，真正的画由 theme 层裁切覆盖上来 */
+        node.setAttribute('fill', lighten(baseCol, 0.72));
       } else {
         node.setAttribute('fill', baseCol);
       }
@@ -522,16 +608,25 @@ function drawCube(el, cube, opt){
          （旧代码 appendChild 到 svg 末尾 → 贴纸压在 theme 之上 → 主题图案全被盖住） */
       cv.svg.insertBefore(node, cv.theme);
 
-      /* 主题贴图：每格中心画一个主题图形，颜色 = 该贴纸颜色 */
-      if (thDef){
-        const xs = it.pts.map(p => p[0]), ys = it.pts.map(p => p[1]);
-        const ccx = (xs[0]+xs[1]+xs[2]+xs[3]) / 4;
-        const ccy = (ys[0]+ys[1]+ys[2]+ys[3]) / 4;
-        const rr = stickerInscribedR(it.pts);
-        const g = document.createElementNS(SVGNS, 'g');
-        g.setAttribute('opacity', decoOp);
-        drawThemeDecal(g, thDef, ccx, ccy, rr, baseCol);
-        cv.theme.appendChild(g);
+      /* 主题贴图（拼图式）：每格贴纸 = 整幅面主题画被自己的四边形裁出的那一块。
+         九块拼起来正好是一整幅画；主色贴近该面基本色；六面同一主题。 */
+      if (thDef && faceMural[it.f] && cv.defs){
+        const ptsAttr = it.pts.map(p => p[0].toFixed(2)+','+p[1].toFixed(2)).join(' ');
+        const clipId = 'thClip' + cv.uid + '-' + it.i;
+        const cp = document.createElementNS(SVGNS, 'clipPath');
+        cp.setAttribute('id', clipId);
+        cp.setAttribute('data-th', '1');
+        const cpoly = document.createElementNS(SVGNS, 'polygon');
+        cpoly.setAttribute('points', ptsAttr);
+        cp.appendChild(cpoly);
+        cv.defs.appendChild(cp);
+        const cell = document.createElementNS(SVGNS, 'g');
+        cell.setAttribute('clip-path', 'url(#' + clipId + ')');
+        cell.setAttribute('opacity', decoOp);
+        const use = document.createElementNS(SVGNS, 'use');
+        use.setAttribute('href', '#' + faceMural[it.f]);
+        cell.appendChild(use);
+        cv.theme.appendChild(cell);
       }
     }
   }

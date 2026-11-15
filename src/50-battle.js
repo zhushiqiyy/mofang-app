@@ -10,6 +10,8 @@ let pracStart = 0;
 let pracTimer = null;
 let pracBusy = false;
 let pracAnim = null;      /* 当前正在播放的逐帧动画句柄（手动拧用），蓝牙即时同步时可取消 */
+let pracBleAnim = null;   /* 蓝牙拧动的视觉转动动画（只负责画面表现，逻辑状态另走即时同步） */
+let pracBleGuard = null;  /* 动画兜底定时器：rAF 在 iOS 后台暂停时强制回到最新逻辑画面 */
 const pracQueue = [];
 
 /* 真魔方整体朝向（手腕整转），由 GAN 陀螺仪 0x1 包更新；渲染时叠加到魔方上。
@@ -110,20 +112,41 @@ function refreshPracUI(){
   $('prac-state').textContent = pracRunning ? '计时中…' : (isSolved(pracCube) ? '已复原' : '待打乱');
 }
 
-/* 立即应用一步到魔方状态（不经过逐帧动画队列）。
-   蓝牙真魔方走这条路：状态第一时间同步，rAF 动画在 iOS 后台会被暂停，
-   若还排队等动画，屏幕魔方就会落后于手上真魔方——这正是"转动不同步"的根因。 */
+/* 蓝牙真魔方拧一步：逻辑状态立即同步 + 画面播放"拧的过程动画"（两者解耦）。
+   · 逻辑（pracCube）在这一刻就算完，计时/复原判定/下一步基准绝不落后于手上魔方；
+   · 画面用 animateAlg 从转前的 cube 播放这一步的转动过程，看得见怎么拧，而不是瞬间刷色块；
+   · 若 rAF 在 iOS 后台被暂停（动画跑不完），用 guard 定时器强制重绘到最新逻辑画面，
+     保证回到前台时屏幕 = 真魔方，不会再"不同步"。 */
 function pracApplyImmediate(tok){
   if (pracAnim && pracAnim.cancel){ try { pracAnim.cancel(); } catch(e){} }
   pracAnim = null;
+  if (pracBleAnim && pracBleAnim.cancel){ try { pracBleAnim.cancel(); } catch(e){} }
+  clearTimeout(pracBleGuard);
+  pracBleAnim = null;
   pracQueue.length = 0;          /* 丢弃积压的旧转动，以真魔方当前这步为准 */
   pracBusy = false;
-  pracCube = applyMove(pracCube, moveOf(tok)) || pracCube;
+
+  const before = pracCube;
+  pracCube = applyMove(before, moveOf(tok)) || before;   /* ① 逻辑立即同步 */
   pracMoves++;
   if (battle.active && !pracRunning) startPracTimer();
-  drawPrac({});
   refreshPracUI();
   checkPracSolved();
+
+  /* ② 画面：从转前状态播放这一步的转动过程动画 */
+  if ($('prac-3d')){
+    pracBleAnim = animateAlg($('prac-3d'), before, [tok], {
+      speed: 2.4,
+      opt: { cubeRot: pracCubeRot },
+      onDone: () => { drawPrac({}); pracBleAnim = null; }
+    });
+    /* ③ 兜底：动画若被后台暂停跑不完，最多 640ms 后强制对齐到最新逻辑状态 */
+    pracBleGuard = setTimeout(() => {
+      if (pracBleAnim && pracBleAnim.cancel){ try { pracBleAnim.cancel(); } catch(e){} }
+      pracBleAnim = null;
+      drawPrac({});
+    }, 640);
+  } else drawPrac({});
 }
 /* 复原判定（immediate 与动画两条路径共用） */
 function checkPracSolved(){
@@ -315,10 +338,25 @@ function scrambleGuideOnMove(label){
   const tok = { f, prime: label.indexOf("'") > 0, dbl: label.indexOf('2') > 0 };
 
   /* 先把这一步应用到"实际布局"——不管对错，真魔方都确实转了这一步 */
-  scrGuide.cube = applyMove(scrGuide.cube, moveOf(tok)) || scrGuide.cube;
+  const before = scrGuide.cube;
+  scrGuide.cube = applyMove(before, moveOf(tok)) || before;
   pracCube = scrGuide.cube;          /* 屏幕魔方 = 真魔方当前布局，实时对账 */
   pracMoves++;
-  drawPrac({}); refreshPracUI();
+  /* 逻辑已同步；画面播放这一步的拧动过程，动画跑不完也有兜底重绘 */
+  if (pracBleAnim && pracBleAnim.cancel){ try { pracBleAnim.cancel(); } catch(e){} }
+  clearTimeout(pracBleGuard);
+  if ($('prac-3d')){
+    pracBleAnim = animateAlg($('prac-3d'), before, [tok], {
+      speed: 2.4,
+      opt: { cubeRot: pracCubeRot },
+      onDone: () => { drawPrac({}); pracBleAnim = null; }
+    });
+    pracBleGuard = setTimeout(() => {
+      if (pracBleAnim && pracBleAnim.cancel){ try { pracBleAnim.cancel(); } catch(e){} }
+      pracBleAnim = null; drawPrac({});
+    }, 640);
+  } else drawPrac({});
+  refreshPracUI();
 
   if (scrGuide.idx >= scrGuide.steps.length){ renderScrambleGuide(); return true; }
 

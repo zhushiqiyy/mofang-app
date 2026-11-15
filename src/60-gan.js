@@ -227,7 +227,13 @@ function ganGen2Parse(bits, st, out) {
       if (st.batLast == null){ st.batLast = lvl; st.batStable = 1; }
       else if (Math.abs(lvl - st.batLast) <= 3){ st.batStable = (st.batStable || 0) + 1; st.batLast = lvl; }
       else { st.batLast = lvl; st.batStable = 1; }
-      if (st.batStable >= 2) out.push({ type: 'BATTERY', level: lvl });  /* 连续两帧一致才上报 */
+      /* 采信门槛提高到连续 4 帧稳定，且拒绝"从正常值突降到极低值"的误读
+         （真电量不会一帧从 60% 掉到 3%；老版扫描字节常把结构位当 3% 误报）。 */
+      if (st.batStable >= 4){
+        const prevLvl = st.batAccepted;
+        const suddenDrop = (typeof prevLvl === 'number' && prevLvl >= 25 && lvl <= 15);
+        if (!suddenDrop){ st.batAccepted = lvl; out.push({ type: 'BATTERY', level: lvl }); }
+      }
     }
     st.seen = true;
   } else if (eventType === 0x0D) {    /* DISCONNECT */
@@ -332,14 +338,14 @@ let ganStayConnected = false;       /* 期望保持连接（用于意外断开�
 let ganGyroRef = null;             /* 基准朝向：首条 0x1 包作为 0°，使屏幕从「对齐」开始 */
 let ganGyroLogT = 0;               /* 监测采样节流时间戳 */
 let ganGyroOn   = true;             /* 整体旋转联动开关（误判/太灵敏时可一键关） */
-let ganGyroSens = 0.5;              /* 灵敏度 0~1.5（App 内可调；0=不动，越大越跟手） */
+let ganGyroSens = 0.85;             /* 灵敏度 0~1.5（默认调高：旧版 0.5 太钝，真机整体转动跟不动；嫌乱转可在 GAN 页调低） */
 let ganGyroPrevSign = [0,0,0];      /* 上一帧"原始增量"的符号，留作同向持续判定
                                         （即便本帧被滤成 0 也保留，避免抖动打断持续计数——
                                           否则持续计数永远到不了 2，真魔方转动也毫无响应） */
 let ganGyroSustain  = [0,0,0];      /* 各轴"连续同方向超阈值"计数（去抖） */
 /* 可调参数（真机封包日志核对后微调） */
 const GYRO_OFF   = [2, 4, 6];       /* 三个 int16 在解密包里的字节起点（小端） */
-const GYRO_SCALE = 0.06;            /* 每单位 ≈ 0.06°；真机微调 */
+const GYRO_SCALE = 0.11;            /* 每单位 ≈ 0.11°（调高：旧版 0.06 太钝，整体转动几乎看不出）；真机微调 */
 const GYRO_AXES  = ['x', 'y', 'z']; /* 三个 int16 分别对应屏幕的哪根轴 */
 const GYRO_SIGN  = [1, 1, 1];       /* 必要时取 -1 翻转某根轴 */
 /* 死区/尖峰/持续统一用「角度(°)」判定（不再用原始单位——之前用原始单位导致阈值失真，
@@ -347,9 +353,9 @@ const GYRO_SIGN  = [1, 1, 1];       /* 必要时取 -1 翻转某根轴 */
    - 死区 GYRO_DEAD_DEG：单帧转角 < 此值视为静止噪声，直接归零
    - 尖峰 GYRO_MAXSTEP_DEG：单帧转角 > 此值视为字节误读/瞬跳，丢弃且不污染基线
    - 持续 GYRO_SUSTAIN：同方向需连续 N 帧超死区，才算"真在转"，滤掉偶发抖动 */
-const GYRO_DEAD_DEG     = 2.0;      /* 死区(°) */
-const GYRO_MAXSTEP_DEG  = 12.0;     /* 单帧角度上限(°) */
-const GYRO_SUSTAIN  = 3;            /* 同一方向需连续 N 帧超阈值才算"真在转" */
+const GYRO_DEAD_DEG     = 0.9;      /* 死区(°)（调低：旧版 2.0 把小幅整体转动全滤成 0） */
+const GYRO_MAXSTEP_DEG  = 16.0;     /* 单帧角度上限(°) */
+const GYRO_SUSTAIN  = 2;            /* 同一方向需连续 N 帧超阈值才算"真在转"（3→2，跟手些，仍有去抖） */
 function ganReadGyroRaw(bits){
   return GYRO_OFF.map(off => {
     const lo = ganBitWord(bits, off*8, 8);
@@ -638,20 +644,25 @@ function onGanPacket(bytes) {
       const f = ganFaceMap[faceIdx] || GAN_FACE[faceIdx];
       /* 方向：0=顺时针 1=逆时针 2=180° */
       const label = f + (ev.direction === 2 ? '2' : (ev.direction === 1 ? "'" : ''));
-      /* 打乱向导优先：蓝牙转一步就校验一步（转对变灰进下一步，转错按当前布局重排） */
-      if (typeof scrambleGuideOnMove === 'function' && scrambleGuideOnMove(label)) { /* 已消费 */ }
-      else if (cfopFollow && cfopFollow.active) cfopFollowMove(label);            /* 还原思路模块跟练优先 */
+      /* 路由优先级。关键修复：所有"跟随"状态必须限定在它自己的页面，
+         否则用户在别的模块开了跟随没关、切回实战后，转动会被吞掉 → APP 没动静（转动卡死）。 */
+      if (currentPage === 'practice'){
+        /* 实战页：打乱向导（本页功能）优先，其余一律走实战同步，绝不被别的模块吞掉 */
+        if (typeof scrambleGuideOnMove === 'function' && scrambleGuideOnMove(label)) { /* 向导已消费 */ }
+        else pracDo(label, true);
+      }
+      else if (typeof scrambleGuideOnMove === 'function' && scrambleGuideOnMove(label)) { /* 打乱向导：转一步校验一步 */ }
+      else if (cfopFollow && cfopFollow.active) cfopFollowMove(label);            /* 还原思路模块跟练 */
       else if (formulaFollow && formulaFollow.active) formulaFollowMove(label);  /* 公式跟练：逐步检查 */
-      else pracDo(label, true);                                            /* 实战练习：立即同步状态，不等动画（修复不同步） */
+      else pracDo(label, true);
     } else if (ev.type === 'BATTERY') {
       if (ev.level !== ganBattery) {
         ganBattery = ev.level;
         const b = $('gan-batt');
-        /* 只有"稳定且确实很低"才报警，避免单帧误读狂弹提示 */
-        const low = ganBattery > 0 && ganBattery <= 15;
+        /* 电量只在 GAN 页面安静显示，绝不弹 toast——弹窗会打断实战转动（老板明确要求）。
+           且经 4 帧稳定 + 拒绝突降后才走到这里，误报概率极低。 */
         if (b) b.textContent = (ganBattery > 0 ? '🔋 电量：' + ganBattery + '%' : '🔋 电量：未知')
-          + (low ? '（偏低，建议换电池）' : '');
-        if (low) toast('🔋 魔方电量低了（' + ganBattery + '%），该换电池啦');
+          + (ganBattery > 0 && ganBattery <= 15 ? '（偏低，建议换电池）' : '');
       }
     } else if (ev.type === 'GYRO') {
       /* 整魔方手腕旋转：解成"这一刻转了多少"，增量叠加到屏幕（仅渲染，不动贴纸） */
