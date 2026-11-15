@@ -518,7 +518,9 @@ function drawCube(el, cube, opt){
       node.setAttribute('stroke', '#10151f');
       node.setAttribute('stroke-width', '1.1');
       node.setAttribute('opacity', decoOp);
-      cv.svg.appendChild(node);   /* 重排 = 深度排序 */
+      /* 深度排序：贴纸插入 theme 层之前，绝不覆盖主题贴图。
+         （旧代码 appendChild 到 svg 末尾 → 贴纸压在 theme 之上 → 主题图案全被盖住） */
+      cv.svg.insertBefore(node, cv.theme);
 
       /* 主题贴图：每格中心画一个主题图形，颜色 = 该贴纸颜色 */
       if (thDef){

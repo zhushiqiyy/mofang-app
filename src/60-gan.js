@@ -638,9 +638,11 @@ function onGanPacket(bytes) {
       const f = ganFaceMap[faceIdx] || GAN_FACE[faceIdx];
       /* 方向：0=顺时针 1=逆时针 2=180° */
       const label = f + (ev.direction === 2 ? '2' : (ev.direction === 1 ? "'" : ''));
-      if (cfopFollow && cfopFollow.active) cfopFollowMove(label);            /* 还原思路模块跟练优先 */
+      /* 打乱向导优先：蓝牙转一步就校验一步（转对变灰进下一步，转错按当前布局重排） */
+      if (typeof scrambleGuideOnMove === 'function' && scrambleGuideOnMove(label)) { /* 已消费 */ }
+      else if (cfopFollow && cfopFollow.active) cfopFollowMove(label);            /* 还原思路模块跟练优先 */
       else if (formulaFollow && formulaFollow.active) formulaFollowMove(label);  /* 公式跟练：逐步检查 */
-      else pracDo(label);                                                  /* 否则驱动实战练习魔方 */
+      else pracDo(label, true);                                            /* 实战练习：立即同步状态，不等动画（修复不同步） */
     } else if (ev.type === 'BATTERY') {
       if (ev.level !== ganBattery) {
         ganBattery = ev.level;

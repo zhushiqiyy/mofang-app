@@ -36,9 +36,10 @@ JSDOM.fromFile(path.resolve('index.html'), {
       check('cube skins = 13 (9 fx + 4 theme + classic)', E('Object.keys(SKINS.cube)').length === 13);
       check('all non-classic cube skins have fx or theme', E("Object.keys(SKINS.cube).filter(k=>k!=='classic').every(k=>SKINS.cube[k].fx || SKINS.cube[k].theme)"));
 
-      /* 3) 玩伴 = 7 个（原6 + 奶龙），每个都是分层模型（>=3 层、z 互不相同） */
+      /* 3) 玩伴 = 4 个真 3D 助手（柯南/天女兽/皮卡丘/奶龙；小助手/迪迦/李星云已移除） */
       const compKeys = E('Object.keys(SKINS.comp)');
-      check('comp skins = 7 (含奶龙)', compKeys.length === 7);
+      check('comp skins = 4 (真3D助手)', compKeys.length === 4);
+      check('removed companions gone', E("['classic','tiga','lixing'].every(k => !SKINS.comp[k] && !COMP_MODELS[k])"));
       check('every comp has layered model >=3 layers', E(
         "Object.keys(COMP_MODELS).every(k => COMP_MODELS[k].layers.length >= 3)"));
       check('every comp has 4 layers with distinct z', E(
@@ -52,12 +53,9 @@ JSDOM.fromFile(path.resolve('index.html'), {
         return E("(function(){ var ids=[]; Object.keys(COMP_MODELS).forEach(k => COMP_MODELS[k].layers.forEach(L => { var m = L.art.match(/id=\"([a-zA-Z0-9_-]+)\"/g) || []; m.forEach(x => ids.push(x.slice(4, -1))); })); return new Set(ids).size === ids.length && ids.length > 10; })()");
       })());
 
-      /* 3c) 重点角色（天女兽 / 李星云）分层内容确实不同（不是同一张图复制） */
+      /* 3c) 重点角色（天女兽）分层内容确实不同（不是同一张图复制） */
       check('ange layers are distinct art', E("new Set([COMP_MODELS.ange.layers[0].art, COMP_MODELS.ange.layers[1].art, COMP_MODELS.ange.layers[2].art, COMP_MODELS.ange.layers[3].art]).size === 4"));
-      check('lixing layers are distinct art', E("new Set([COMP_MODELS.lixing.layers[0].art, COMP_MODELS.lixing.layers[1].art, COMP_MODELS.lixing.layers[2].art, COMP_MODELS.lixing.layers[3].art]).size === 4"));
       check('ange has 8 wing paths in far layer', E("(COMP_MODELS.ange.layers[0].art.match(/<path/g)||[]).length >= 8"));
-      check('lixing far layer has sword', E("COMP_MODELS.lixing.layers[0].art.indexOf('lx-blade') >= 0"));
-      check('lixing head has hat + mask', E("COMP_MODELS.lixing.layers[3].art.indexOf('lx-hat') >= 0 && COMP_MODELS.lixing.layers[3].art.indexOf('lx-mask') >= 0"));
       check('ange head has halo + helm', E("COMP_MODELS.ange.layers[3].art.indexOf('ag-halo') >= 0 && COMP_MODELS.ange.layers[3].art.indexOf('ag-helm') >= 0"));
 
       /* 4) 练习页魔方渲染（贴纸多边形 + 纯色填充，不用渐变） */
@@ -148,11 +146,11 @@ JSDOM.fromFile(path.resolve('index.html'), {
       check('skin room rendered', !!skinHost && skinHost.children.length >= 3);
       check('skin room shows 13 cube skins', skinHost.querySelectorAll('.skin-cube').length === 13);
       const compStageCount = skinHost.querySelectorAll('.stage3d').length + skinHost.querySelectorAll('.m3d-host').length;
-      check('skin room shows 7 comp stages (含奶龙)', compStageCount === 7);
+      check('skin room shows 4 comp stages (真3D助手)', compStageCount === 4);
       check('no price/buy buttons remain', skinHost.textContent.indexOf('💎') < 0 && !skinHost.querySelector('[onclick*="buySkin"]'));
-      check('equipped cards marked (galaxy cube + classic comp)', (() => {
+      check('equipped cards marked (galaxy cube + conan comp)', (() => {
         const on = skinHost.querySelectorAll('.skin-card.on');
-        return on.length === 2;   /* galaxy 魔方 + classic 玩伴当前使用中 */
+        return on.length === 2;   /* galaxy 魔方 + conan 玩伴当前使用中 */
       })());
       check('mini stage has fewer layers, no back plates', (() => {
         const ms = skinHost.querySelector('.skin-comp .stage3d');
@@ -160,14 +158,14 @@ JSDOM.fromFile(path.resolve('index.html'), {
       })());
 
       /* 7) 装备玩伴 */
-      w.equipSkin('comp', 'tiga');
-      check('companion equipped = tiga', E("store.skins.comp") === 'tiga');
+      w.equipSkin('comp', 'ange');
+      check('companion equipped = ange', E("store.skins.comp") === 'ange');
       w.go('practice');
       check('equipped companion still layered', doc.querySelectorAll('#practice-companion .char-layer').length >= 4);
 
       /* 8) 还原 */
       w.equipSkin('cube', 'classic');
-      w.equipSkin('comp', 'classic');
+      w.equipSkin('comp', 'conan');
 
       console.log(out.join('\n'));
       console.log('\nJS errors: ' + errors.length);

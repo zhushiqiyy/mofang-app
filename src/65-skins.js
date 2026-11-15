@@ -120,135 +120,6 @@ const ANGE_HEAD =
 + '<path d="M57 46 Q60 48.5 63 46" stroke="#c8743f" stroke-width="1.3" fill="none" stroke-linecap="round"/>'
 + '</svg>';
 
-/* ---------------- 天暗星·李星云 ---------------- */
-/* 远层：背后龙泉剑（真正外凸的部件才放远景深） */
-const LX_FAR =
-'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
-+ '<defs>'
-+ '<linearGradient id="lx-blade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#dfe9f5"/><stop offset=".5" stop-color="#ffffff"/><stop offset="1" stop-color="#9fb0c6"/></linearGradient>'
-+ '</defs>'
-/* 背后龙泉剑（斜背） */
-+ '<g transform="rotate(24 84 34)">'
-+ '<rect x="82" y="6" width="5" height="74" rx="2.4" fill="url(#lx-blade)" stroke="#7e8ea4" stroke-width=".7"/>'
-+ '<path d="M82 6 L84.5 2 L87 6 Z" fill="#eef4fb"/>'
-+ '<rect x="78" y="78" width="13" height="4.5" rx="2" fill="#1d2740" stroke="#c8a24a" stroke-width=".7"/>'
-+ '<rect x="80" y="82" width="9" height="16" rx="3" fill="#1d2740" stroke="#8b6220" stroke-width=".7"/>'
-+ '</g>'
-+ '</svg>';
-
-/* 中层：长袍后摆 + 躯干战袍 + 铠甲 + 红腰封（后摆与身体同层，不会脱节） */
-const LX_MID =
-'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
-+ '<defs>'
-+ '<linearGradient id="lx-robe" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#33416b"/><stop offset="1" stop-color="#161d33"/></linearGradient>'
-+ '<linearGradient id="lx-teal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4fe6f0"/><stop offset="1" stop-color="#17808d"/></linearGradient>'
-+ '</defs>'
-/* 长袍后摆（画在身体后面，同层） */
-+ '<path d="M44 60 Q38 88 34 108 L52 104 L60 108 L68 104 L86 108 Q82 88 76 60 Z" fill="#232c46"/>'
-/* 腿 + 靴 */
-+ '<path d="M52 88 L58 88 L57 110 L51 110 Z" fill="#1b2238"/>'
-+ '<path d="M62 88 L68 88 L69 110 L63 110 Z" fill="#1b2238"/>'
-+ '<path d="M48 106 L59 106 L58 114 L47 114 Z" fill="#101623" stroke="#000" stroke-width=".6"/>'
-+ '<path d="M61 106 L72 106 L73 114 L62 114 Z" fill="#101623" stroke="#000" stroke-width=".6"/>'
-/* 长袍主体 */
-+ '<path d="M45 52 Q60 46 75 52 L82 96 Q60 104 38 96 Z" fill="url(#lx-robe)" stroke="#0b1020" stroke-width="1.1"/>'
-/* 红色高领（参考图特征） */
-+ '<path d="M51 50 Q60 44 69 50 L67 58 Q60 52 53 58 Z" fill="#a8232e" stroke="#6d1420" stroke-width=".9"/>'
-/* 鳞甲胸甲（暗钢 + 金边，参考图的铠甲质感） */
-+ '<path d="M52 58 L68 58 L64 74 L56 74 Z" fill="#1a2238" stroke="#c8a24a" stroke-width=".8"/>'
-+ '<path d="M54 61 L60 65 L66 61" stroke="#3a4a6e" stroke-width=".9" fill="none"/>'
-+ '<path d="M55 68 L60 71 L65 68" stroke="#3a4a6e" stroke-width=".9" fill="none"/>'
-/* 青色纹路（仅保留细线 + 天暗星发光眼呼应） */
-+ '<path d="M58 74 L62 74 L60 98 Z" fill="url(#lx-teal)" opacity=".55"/>'
-/* 红色腰封 + 腰牌 */
-+ '<path d="M45 74 Q60 80 75 74 L76 84 Q60 90 44 84 Z" fill="#a8232e" stroke="#6d1420" stroke-width=".9"/>'
-+ '<rect x="55" y="76" width="10" height="9" rx="2" fill="#c8a24a" stroke="#7d5c14" stroke-width=".8"/>'
-+ '<path d="M60 76 L60 85" stroke="#7d5c14" stroke-width=".7"/>'
-+ '</svg>';
-
-/* 近层：双臂 + 护腕 + 护肩 */
-const LX_NEAR =
-'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
-+ '<defs><linearGradient id="lx-arm2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#39456e"/><stop offset="1" stop-color="#131a2c"/></linearGradient></defs>'
-/* 护肩 */
-+ '<path d="M44 50 Q36 52 34 62 Q40 60 46 58 Z" fill="url(#lx-arm2)" stroke="#0b1020" stroke-width=".8"/>'
-+ '<path d="M76 50 Q84 52 86 62 Q80 60 74 58 Z" fill="url(#lx-arm2)" stroke="#0b1020" stroke-width=".8"/>'
-/* 左臂（垂握） */
-+ '<path d="M48 54 Q42 64 40 76" stroke="#26304e" stroke-width="7" fill="none" stroke-linecap="round"/>'
-+ '<circle cx="39" cy="78" r="4.2" fill="#1d2740"/>'
-/* 右臂（扶剑柄，微抬） */
-+ '<path d="M72 54 Q78 62 80 72" stroke="#26304e" stroke-width="7" fill="none" stroke-linecap="round"/>'
-+ '<circle cx="81" cy="74" r="4.2" fill="#1d2740"/>'
-/* 护腕（红纹金边） */
-+ '<rect x="34" y="70" width="11" height="9" rx="3" fill="#a8232e" stroke="#c8a24a" stroke-width=".8"/>'
-+ '<rect x="75" y="66" width="11" height="9" rx="3" fill="#a8232e" stroke="#c8a24a" stroke-width=".8"/>'
-+ '</svg>';
-
-/* 最前层：斗笠 + 红面罩 + 发冠 */
-const LX_HEAD =
-'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
-+ '<defs>'
-+ '<linearGradient id="lx-hat" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a4560"/><stop offset="1" stop-color="#0d1220"/></linearGradient>'
-+ '<linearGradient id="lx-mask" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c0392b"/><stop offset="1" stop-color="#7d1a16"/></linearGradient>'
-+ '</defs>'
-/* 斗笠：宽檐 + 顶 */
-+ '<ellipse cx="60" cy="30" rx="27" ry="7" fill="url(#lx-hat)" stroke="#05080f" stroke-width=".9"/>'
-+ '<path d="M47 30 Q47 17 60 16 Q73 17 73 30 Q60 26 47 30 Z" fill="url(#lx-hat)" stroke="#05080f" stroke-width=".8"/>'
-+ '<path d="M48 27 Q60 23 72 27" stroke="#5a6884" stroke-width=".8" fill="none" opacity=".7"/>'
-/* 面罩（遮下半脸） */
-+ '<path d="M50 34 Q60 31 70 34 L69 50 Q60 54 51 50 Z" fill="url(#lx-mask)" stroke="#5c110d" stroke-width=".9"/>'
-/* 露出的眼部区域 */
-+ '<path d="M53 38 L57 37 L56 40 Z" fill="#4fe6f0"/>'
-+ '<path d="M67 38 L63 37 L64 40 Z" fill="#4fe6f0"/>'
-+ '<path d="M55 45 Q60 47 65 45" stroke="#5c110d" stroke-width="1" fill="none"/>'
-+ '</svg>';
-
-/* ---------------- 迪迦奥特曼 ---------------- */
-const TIGA_FAR =
-'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
-+ '<defs><linearGradient id="tg-slv" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f8fd"/><stop offset="1" stop-color="#a9b6c8"/></linearGradient></defs>'
-+ '<path d="M45 52 Q40 70 42 92 Q60 98 78 92 Q80 70 75 52 Z" fill="#c3cede" opacity=".55"/>'
-+ '</svg>';
-
-const TIGA_MID =
-'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
-+ '<defs>'
-+ '<linearGradient id="tg-r" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ef5148"/><stop offset="1" stop-color="#9c1f1a"/></linearGradient>'
-+ '</defs>'
-+ '<path d="M50 74 L58 74 L57 100 L52 102 L50 100 Z" fill="url(#tg-r)"/>'
-+ '<path d="M62 74 L70 74 L70 100 L64 102 L63 100 Z" fill="url(#tg-r)"/>'
-+ '<rect x="49" y="99" width="9" height="11" rx="3" fill="#d7dde6"/><rect x="62" y="99" width="9" height="11" rx="3" fill="#d7dde6"/>'
-+ '<path d="M46 46 Q60 41 74 46 L72 78 Q60 84 48 78 Z" fill="url(#tg-slv)"/>'
-+ '<path d="M54 72 L66 72 L64 82 L56 82 Z" fill="#a266dc"/>'
-+ '</svg>';
-
-const TIGA_NEAR =
-'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
-+ '<defs>'
-+ '<linearGradient id="tg-r2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ef5148"/><stop offset="1" stop-color="#9c1f1a"/></linearGradient>'
-+ '<radialGradient id="tg-t" cx="0.5" cy="0.4" r="0.6"><stop offset="0" stop-color="#a9edff"/><stop offset="1" stop-color="#1e9fd8"/></radialGradient>'
-+ '</defs>'
-+ '<path d="M46 48 Q40 58 43 76 L49 73 L49 50 Z" fill="url(#tg-slv)"/>'
-+ '<path d="M74 48 Q80 58 77 76 L71 73 L71 50 Z" fill="url(#tg-slv)"/>'
-+ '<rect x="43" y="70" width="6" height="10" rx="2" fill="url(#tg-r2)"/><rect x="71" y="70" width="6" height="10" rx="2" fill="url(#tg-r2)"/>'
-+ '<path d="M52 47 L68 47 L66 70 L54 70 Z" fill="url(#tg-r2)"/>'
-+ '<circle cx="60" cy="61" r="10" fill="url(#tg-t)" opacity=".5"/>'
-+ '<path d="M56 58 L64 58 L60 67 Z" fill="#4fd2ff" stroke="#0b6fa8" stroke-width="1"/>'
-+ '</svg>';
-
-const TIGA_HEAD =
-'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
-+ '<defs>'
-+ '<radialGradient id="tg-cr" cx="0.5" cy="0.4" r="0.6"><stop offset="0" stop-color="#a9edff"/><stop offset="1" stop-color="#1e9fd8"/></radialGradient>'
-+ '</defs>'
-+ '<path d="M50 27 Q60 21 70 27 L70 42 Q60 50 50 42 Z" fill="url(#tg-slv)"/>'
-+ '<path d="M54 25 L60 19 L66 25 L60 29 Z" fill="#ef5148"/>'
-+ '<path d="M52 30 L47 24 L54 27 Z" fill="url(#tg-slv)"/><path d="M68 30 L73 24 L66 27 Z" fill="url(#tg-slv)"/>'
-+ '<path d="M56 24 L64 24 L60 29 Z" fill="#4fd2ff" stroke="#0b6fa8" stroke-width=".7"/>'
-+ '<ellipse cx="55" cy="37" rx="3" ry="4.2" fill="#10141c"/><ellipse cx="65" cy="37" rx="3" ry="4.2" fill="#10141c"/>'
-+ '<path d="M52 43 Q60 47 68 43" stroke="#8f9cad" stroke-width="1.5" fill="none" stroke-linecap="round"/>'
-+ '</svg>';
-
 /* ---------------- 名侦探柯南 ---------------- */
 const CONAN_FAR =
 '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
@@ -347,64 +218,16 @@ const NL_HEAD =
 + '<path d="M55 55 Q60 59 65 55" stroke="#c98a1a" stroke-width="1.4" fill="none" stroke-linecap="round"/>'
 + '</svg>';
 
-/* ---------------- 默认小助手（机甲风） ---------------- */
-const CL_FAR =
-'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
-+ '<path d="M44 54 Q60 48 76 54 L80 90 Q60 98 40 90 Z" fill="#2a4fb0" opacity=".55"/>'
-+ '</svg>';
-
-const CL_MID =
-'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
-+ '<defs><linearGradient id="cl-b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#2a4fb0"/></linearGradient></defs>'
-+ '<rect x="50" y="84" width="9" height="22" rx="4" fill="#2a4fb0"/><rect x="61" y="84" width="9" height="22" rx="4" fill="#2a4fb0"/>'
-+ '<path d="M44 52 Q60 46 76 52 L80 86 Q60 94 40 86 Z" fill="url(#cl-b)"/>'
-+ '<circle cx="60" cy="74" r="9" fill="#cfe0ff"/>'
-+ '</svg>';
-
-const CL_NEAR =
-'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
-+ '<defs><linearGradient id="cl-b2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#2a4fb0"/></linearGradient></defs>'
-+ '<rect x="37" y="56" width="9" height="24" rx="4" fill="url(#cl-b2)"/><rect x="74" y="56" width="9" height="24" rx="4" fill="url(#cl-b2)"/>'
-+ '</svg>';
-
-const CL_HEAD =
-'<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">'
-+ '<defs><linearGradient id="cl-b3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b8cff"/><stop offset="1" stop-color="#2a4fb0"/></linearGradient></defs>'
-+ '<rect x="44" y="28" width="32" height="31" rx="13" fill="url(#cl-b3)"/>'
-+ '<rect x="48" y="37" width="10" height="8" rx="4" fill="#0b1020"/><rect x="62" y="37" width="10" height="8" rx="4" fill="#0b1020"/>'
-+ '<circle cx="53" cy="41" r="2" fill="#7fd0ff"/><circle cx="67" cy="41" r="2" fill="#7fd0ff"/>'
-+ '<path d="M52 49 Q60 53 68 49" stroke="#0b1020" stroke-width="2" fill="none" stroke-linecap="round"/>'
-+ '<path d="M60 22 L64 26 L56 26 Z" fill="#7fd0ff"/>'
-+ '</svg>';
-
 /* ---------------- 分层模型表 ----------------
    z：景深（越大越靠前）。近大远小交给 perspective 自动完成（物理正确），
    只有真正"外凸"的部件（羽翼 / 背剑 / 尾巴）才给大景深，
    贴身部件（后摆 / 后发 / 背影）只放微景深，旋转时不会和身体脱节。 */
 const COMP_MODELS = {
-  classic:{ layers:[
-    { z:-40,  art:CL_FAR },
-    { z:0,    art:CL_MID },
-    { z:-12,  art:CL_NEAR },
-    { z:68,   art:CL_HEAD }
-  ]},
   ange:{ layers:[
     { z:-150, art:ANGE_FAR },
     { z:-70,  art:ANGE_MID },
     { z:-12,  art:ANGE_NEAR },
     { z:56,   art:ANGE_HEAD }
-  ]},
-  lixing:{ layers:[
-    { z:-150, art:LX_FAR },
-    { z:-70,  art:LX_MID },
-    { z:-12,  art:LX_NEAR },
-    { z:58,   art:LX_HEAD }
-  ]},
-  tiga:{ layers:[
-    { z:-40,  art:TIGA_FAR },
-    { z:0,    art:TIGA_MID },
-    { z:-12,  art:TIGA_NEAR },
-    { z:68,   art:TIGA_HEAD }
   ]},
   conan:{ layers:[
     { z:-40,  art:CONAN_FAR },
@@ -447,25 +270,26 @@ const SKINS = {
     thHeart: { name:'爱心主题', theme:'heart',  desc:'每面都是同色爱心，整面还原=一片爱心' },
     thFlower:{ name:'花朵主题', theme:'flower', desc:'每面都是同色花朵，整面还原=一园花' }
   },
-  /* 玩伴皮肤：aura = 展厅光环色 */
+  /* 玩伴皮肤：只保留 4 个真 3D 助手（小助手/迪迦/李星云已移除）；aura = 展厅光环色 */
   comp: {
-    classic:{ name:'小助手',       aura:'#5b8cff' },
-    tiga:   { name:'迪迦奥特曼',   aura:'#9a5fd0' },
-    ange:   { name:'天女兽',       aura:'#ffd45e' },
     conan:  { name:'名侦探柯南',   aura:'#3a63b8' },
-    lixing: { name:'天暗星李星云', aura:'#39d6e0' },
+    ange:   { name:'天女兽',       aura:'#ffd45e' },
     pika:   { name:'皮卡丘',       aura:'#ffd83d' },
     nailong:{ name:'奶龙',         aura:'#ffcf5a' }
   }
 };
+const DEFAULT_COMP = 'conan';   /* 默认玩伴 = 柯南（小助手已移除） */
 
 let curCubeSkin = 'classic';
-let curCompSkin = 'classic';
+let curCompSkin = DEFAULT_COMP;
 
 /* 启动时把已保存的皮肤套上去（在 boot 里调用） */
 function initSkins(){
   curCubeSkin = (store.skins && store.skins.cube) || 'classic';
-  curCompSkin = (store.skins && store.skins.comp) || 'classic';
+  /* 兼容老存档：小助手/迪迦/李星云已移除，旧值统一回退到默认玩伴柯南 */
+  const saved = (store.skins && store.skins.comp) || DEFAULT_COMP;
+  curCompSkin = SKINS.comp[saved] ? saved : DEFAULT_COMP;
+  store.skins.comp = curCompSkin;
   setCubeSkin(curCubeSkin, true);   /* 仅设置特效，颜色保持经典 */
 }
 
@@ -509,8 +333,8 @@ function companion3DMarkup(id, mini){
 
 /* 原 SVG 分层舞台（无 3D 模型 / 加载失败降级用） */
 function companionSvgMarkup(id, mini){
-  const m = COMP_MODELS[id] || COMP_MODELS.classic;
-  const sk = SKINS.comp[id] || SKINS.comp.classic;
+  const m = COMP_MODELS[id] || COMP_MODELS[DEFAULT_COMP];
+  const sk = SKINS.comp[id] || SKINS.comp[DEFAULT_COMP];
   const layers = mini ? m.layers.filter(L => L.z >= -80) : m.layers;
   let h = '<div class="stage3d' + (mini ? ' mini' : '') + '">'
     + '<div class="stage3d-inner" data-tt>'
@@ -610,7 +434,7 @@ function companionSay(){
 
 function renderCompanion(host){
   if (!host) return;
-  const sk = SKINS.comp[curCompSkin] || SKINS.comp.classic;
+  const sk = SKINS.comp[curCompSkin] || SKINS.comp[DEFAULT_COMP];
   host.innerHTML =
     '<div class="companion3d">'
     + '<div class="companion-stage">' + companion3DMarkup(curCompSkin) + '</div>'

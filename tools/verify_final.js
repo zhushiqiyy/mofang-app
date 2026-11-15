@@ -59,12 +59,13 @@ ok('4 个助手模型齐全', ['conan.glb','ange.glb','pika.glb','nailong.glb'].
 ok('本地 three.js 引擎齐全', ['three.module.js','loaders/GLTFLoader.js','controls/OrbitControls.js','utils/BufferGeometryUtils.js'].every(f => fs.existsSync(path.join(__dirname, '..', 'vendor/three', f))));
 ok('3D 加载失败降级回 SVG 分层', has('companionSvgMarkup') && has('onFail'));
 
-console.log('== 5. 五大 named 玩伴 + 8 皮肤 ==');
-for (const c of ['迪迦', '天女兽', '柯南', '李星云', '皮卡丘']) ok('玩伴 ' + c, has(c));
+console.log('== 5. 4 位真 3D 玩伴 + 8 皮肤 ==');
+for (const c of ['天女兽', '柯南', '皮卡丘', '奶龙']) ok('玩伴 ' + c, has(c));
 ok('COMP_MODELS 模型表', has('COMP_MODELS'));
 ok('SKINS 皮肤表含 8 种元素特效（不含经典）', (html.match(/fx:'(?:flame|ocean|forest|sun|galaxy|aurora|bubble|brill)'/g) || []).length === 8);
-ok('SKINS 玩伴表含 5 位 named 角色', ['tiga','ange','conan','lixing','pika'].every(k => has(k + ':')));
-ok('默认玩伴非纸片人（有分层模型）', has('小助手'));
+ok('SKINS 玩伴表含 4 位助手', ['ange','conan','pika','nailong'].every(k => has(k + ':')));
+ok('默认玩伴 = 柯南', has('DEFAULT_COMP') && /DEFAULT_COMP\s*=\s*['\"]conan/.test(html));
+ok('已移除 小助手/迪迦/李星云 模型表项', !/classic:\{ layers:/.test(html) && !/tiga:\{ layers:/.test(html) && !/lixing:\{ layers:/.test(html));
 
 console.log('== 6. PWA / iPad 安装 ==');
 ok('manifest 链接', has('rel="manifest"'));

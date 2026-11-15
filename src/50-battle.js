@@ -9,6 +9,7 @@ let pracRunning = false;
 let pracStart = 0;
 let pracTimer = null;
 let pracBusy = false;
+let pracAnim = null;      /* 当前正在播放的逐帧动画句柄（手动拧用），蓝牙即时同步时可取消 */
 const pracQueue = [];
 
 /* 真魔方整体朝向（手腕整转），由 GAN 陀螺仪 0x1 包更新；渲染时叠加到魔方上。
@@ -109,12 +110,36 @@ function refreshPracUI(){
   $('prac-state').textContent = pracRunning ? '计时中…' : (isSolved(pracCube) ? '已复原' : '待打乱');
 }
 
-function pracDo(label){
+/* 立即应用一步到魔方状态（不经过逐帧动画队列）。
+   蓝牙真魔方走这条路：状态第一时间同步，rAF 动画在 iOS 后台会被暂停，
+   若还排队等动画，屏幕魔方就会落后于手上真魔方——这正是"转动不同步"的根因。 */
+function pracApplyImmediate(tok){
+  if (pracAnim && pracAnim.cancel){ try { pracAnim.cancel(); } catch(e){} }
+  pracAnim = null;
+  pracQueue.length = 0;          /* 丢弃积压的旧转动，以真魔方当前这步为准 */
+  pracBusy = false;
+  pracCube = applyMove(pracCube, moveOf(tok)) || pracCube;
+  pracMoves++;
+  if (battle.active && !pracRunning) startPracTimer();
+  drawPrac({});
+  refreshPracUI();
+  checkPracSolved();
+}
+/* 复原判定（immediate 与动画两条路径共用） */
+function checkPracSolved(){
+  if (battle.active && !battle.playerWon && isSolved(pracCube)) battlePlayerWin();
+  if (!battle.active && pracRunning && isSolved(pracCube)) pracStop(true);
+}
+
+function pracDo(label, fromBle){
   /* label 形如 "R" / "R'" / "R2" */
   const f = label[0];
   const prime = label.indexOf("'") > 0;
   const dbl = label.indexOf('2') > 0;
-  pracQueue.push({ f, prime, dbl });
+  const tok = { f, prime, dbl };
+  /* 蓝牙上报：立即同步状态，不等动画（关键修复） */
+  if (fromBle){ pracApplyImmediate(tok); return; }
+  pracQueue.push(tok);
   if (!pracBusy) pracFlush();
 }
 
@@ -124,7 +149,7 @@ function pracFlush(){
   const t = pracQueue.shift();
   const tok = { f:t.f, prime:t.prime, dbl:t.dbl };
 
-  animateAlg($('prac-3d'), pracCube, [tok], {
+  pracAnim = animateAlg($('prac-3d'), pracCube, [tok], {
     speed: 3,
     opt: { cubeRot: pracCubeRot },
     onDone: cube => {
@@ -134,11 +159,7 @@ function pracFlush(){
       drawPrac({});
       refreshPracUI();
       pracFlush();
-
-      /* 对战判定 */
-      if (battle.active && !battle.playerWon && isSolved(pracCube)) battlePlayerWin();
-      /* 普通挑战判定 */
-      if (!battle.active && pracRunning && isSolved(pracCube)) pracStop(true);
+      checkPracSolved();
     }
   });
 }
@@ -245,6 +266,115 @@ function pracSkipScramble(){
   const host = $('scramble-steps'); if (host) host.style.display = 'none';
   pracApplyScrambleToScreen();
   toast('已打乱');
+}
+
+/* =========================================================================
+   蓝牙打乱向导（老板 2026-11-16 定的方案）
+   · 前提：打乱前魔方必须是复原态（信任序列的基准）
+   · 每转一步蓝牙上报 → 与"当前待确认步骤"比对：
+       转对 → 该步 chip 变灰(ok)，指针进下一步
+       转错 → 以【打乱后的实际布局】为基准，重排剩余步骤（重生成尾巴）
+   · 信任序列：scrGuideCube 从复原态按"已确认步骤"逐步 applyMove 推算，
+     它在向导面板里实时显示 = 手上真魔方的当前布局（用来对账）
+   ========================================================================= */
+let scrGuide = null;   /* { steps:[tok], idx, cube, total, log:[] } */
+
+function scrambleGuideStart(){
+  if (battle.active) battleQuit();
+  if (typeof ganConn === 'undefined' || !ganConn){
+    toast('请先连上蓝牙魔方，再用这个打乱向导');
+    return;
+  }
+  /* 打乱前必须是复原态——信任序列的硬前提 */
+  if (!isSolved(pracCube)){
+    toast('先把魔方拧回六面复原，再开始打乱向导');
+    $('prac-state').textContent = '请先复原再打乱';
+    return;
+  }
+  pracStop(false);
+  pracQueue.length = 0; if (pracAnim && pracAnim.cancel) try{pracAnim.cancel();}catch(e){}
+  pracAnim = null; pracBusy = false;
+
+  const scr = randomScramble(20);
+  scrGuide = { steps: scr, idx: 0, cube: solvedCube(), total: scr.length, log: [] };
+  /* 屏幕魔方保持复原，作为"实际布局"实时镜像（每次蓝牙转动都会同步到它） */
+  pracCube = solvedCube();
+  pracMoves = 0; pracRunning = false; clearInterval(pracTimer);
+  $('prac-time').textContent = '0.0';
+  drawPrac({}); refreshPracUI();
+  renderScrambleGuide();
+  $('prac-state').textContent = '蓝牙打乱向导 · 转一步确认一步';
+  toast('照步骤拧真魔方，转对一步自动变灰');
+  if (typeof recordTraining === 'function') recordTraining({ kind:'scramble_guide_start', steps: scr.length });
+}
+
+/* 蓝牙每上报一步转动 → 向导消费。返回 true 表示已处理（不要再走普通 pracDo） */
+function scrambleGuideOnMove(label){
+  if (!scrGuide) return false;
+  const f = label[0];
+  const tok = { f, prime: label.indexOf("'") > 0, dbl: label.indexOf('2') > 0 };
+
+  /* 先把这一步应用到"实际布局"——不管对错，真魔方都确实转了这一步 */
+  scrGuide.cube = applyMove(scrGuide.cube, moveOf(tok)) || scrGuide.cube;
+  pracCube = scrGuide.cube;          /* 屏幕魔方 = 真魔方当前布局，实时对账 */
+  pracMoves++;
+  drawPrac({}); refreshPracUI();
+
+  if (scrGuide.idx >= scrGuide.steps.length){ renderScrambleGuide(); return true; }
+
+  const expect = scrGuide.steps[scrGuide.idx];
+  if (mFollowTokEq(tok, expect)){
+    /* 转对：确认这步、指针前进 */
+    scrGuide.log.push({ step: fmtTok2(expect), ok: true });
+    scrGuide.idx++;
+    renderScrambleGuide();
+    if (scrGuide.idx >= scrGuide.steps.length) scrambleGuideFinish();
+    else toast('✅ ' + fmtTok2(expect) + ' 对了，下一步 ' + fmtTok2(scrGuide.steps[scrGuide.idx]));
+  } else {
+    /* 转错：以当前实际布局为基准，重排剩余步骤（重新生成尾巴） */
+    const remain = scrGuide.steps.length - scrGuide.idx;
+    const tail = randomScramble(remain);
+    scrGuide.steps = scrGuide.steps.slice(0, scrGuide.idx).concat(tail);
+    scrGuide.log.push({ step: fmtTok2(tok), ok: false, expect: fmtTok2(expect) });
+    renderScrambleGuide();
+    toast('↺ 转错了，已按魔方当前布局重新排好后面的步骤');
+  }
+  return true;
+}
+
+function renderScrambleGuide(){
+  const host = $('scramble-steps');
+  if (!host || !scrGuide) return;
+  host.style.display = 'block';
+  const g = scrGuide;
+  const chips = g.steps.map((t, i) => {
+    const cls = i < g.idx ? 'chunk done' : (i === g.idx ? 'chunk now' : 'chunk');
+    return '<span class="' + cls + '">' + fmtTok2(t) + '</span>';
+  }).join('');
+  const progress = g.idx + ' / ' + g.total;
+  host.innerHTML =
+    '<div class="sub" style="margin-bottom:6px;">📡 <b>蓝牙打乱向导</b>（' + progress + '）：拧真魔方，<b>转对一步自动变灰并跳下一步</b>；转错会按当前布局重排后面的步骤。</div>'
+    + '<div class="chunks">' + chips + '</div>'
+    + '<div class="sub" style="margin-top:8px;">🟦 上方魔方 = 真魔方当前布局（每转一步实时同步，用来对账）</div>'
+    + '<div class="row center" style="margin-top:10px;gap:8px;">'
+    + '<button class="btn ghost sm" onclick="scrambleGuideCancel()">✕ 退出向导</button>'
+    + '</div>';
+}
+
+function scrambleGuideFinish(){
+  const host = $('scramble-steps'); if (host) host.style.display = 'none';
+  pracScrambleToks = scrGuide.steps.slice();
+  scrGuide = null;
+  $('prac-state').textContent = '已打乱，开始拧';
+  toast('🎉 打乱完成！拧一步就开始计时');
+  if (typeof recordTraining === 'function') recordTraining({ kind:'scramble_guide_done', moves: pracScrambleToks.length });
+}
+
+function scrambleGuideCancel(){
+  scrGuide = null;
+  const host = $('scramble-steps'); if (host) host.style.display = 'none';
+  $('prac-state').textContent = '已退出打乱向导';
+  toast('已退出蓝牙打乱向导');
 }
 
 /* ---------------- 人机对战 ---------------- */

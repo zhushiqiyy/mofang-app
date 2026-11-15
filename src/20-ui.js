@@ -26,9 +26,10 @@ function loadStore(){
   s.streak = s.streak || 0;
   s.lastDay = s.lastDay || null;
   /* 皮肤（cube=魔方特效，comp=玩伴）/ 记号连对 / 空间想象次数 */
-  s.skins = s.skins || { cube:'classic', comp:'classic' };
+  s.skins = s.skins || { cube:'classic', comp:'conan' };
   s.skins.cube = s.skins.cube || 'classic';
-  s.skins.comp = s.skins.comp || 'classic';
+  /* 玩伴默认柯南；小助手/迪迦/李星云已移除，旧存档值在 initSkins 里统一回退 */
+  s.skins.comp = s.skins.comp || 'conan';
   delete s.skins.owned;               /* 旧版商城的"已拥有"列表不再需要 */
   delete s.points;                    /* 旧版商城的积分不再需要 */
   s.notes = s.notes || { streak:0, best:0 };

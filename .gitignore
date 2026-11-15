@@ -13,6 +13,9 @@ ios/App/App.ipa
 shots/
 tools/*.png
 
+# 云端诊断数据（临时分析产物，含测试数据，不进仓库）
+tools/cloud-data/
+
 # 系统垃圾
 Thumbs.db
 desktop.ini
