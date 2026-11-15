@@ -36,9 +36,9 @@ JSDOM.fromFile(path.resolve('index.html'), {
       check('cube skins = 13 (9 fx + 4 theme + classic)', E('Object.keys(SKINS.cube)').length === 13);
       check('all non-classic cube skins have fx or theme', E("Object.keys(SKINS.cube).filter(k=>k!=='classic').every(k=>SKINS.cube[k].fx || SKINS.cube[k].theme)"));
 
-      /* 3) 玩伴 = 6 个，每个都是分层模型（>=3 层、z 互不相同） */
+      /* 3) 玩伴 = 7 个（原6 + 奶龙），每个都是分层模型（>=3 层、z 互不相同） */
       const compKeys = E('Object.keys(SKINS.comp)');
-      check('comp skins = 6', compKeys.length === 6);
+      check('comp skins = 7 (含奶龙)', compKeys.length === 7);
       check('every comp has layered model >=3 layers', E(
         "Object.keys(COMP_MODELS).every(k => COMP_MODELS[k].layers.length >= 3)"));
       check('every comp has 4 layers with distinct z', E(
@@ -147,7 +147,8 @@ JSDOM.fromFile(path.resolve('index.html'), {
       const skinHost = doc.getElementById('skin-host');
       check('skin room rendered', !!skinHost && skinHost.children.length >= 3);
       check('skin room shows 13 cube skins', skinHost.querySelectorAll('.skin-cube').length === 13);
-      check('skin room shows 6 comp stages', skinHost.querySelectorAll('.stage3d').length === 6);
+      const compStageCount = skinHost.querySelectorAll('.stage3d').length + skinHost.querySelectorAll('.m3d-host').length;
+      check('skin room shows 7 comp stages (含奶龙)', compStageCount === 7);
       check('no price/buy buttons remain', skinHost.textContent.indexOf('💎') < 0 && !skinHost.querySelector('[onclick*="buySkin"]'));
       check('equipped cards marked (galaxy cube + classic comp)', (() => {
         const on = skinHost.querySelectorAll('.skin-card.on');
